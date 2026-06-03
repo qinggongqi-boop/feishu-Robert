@@ -88,3 +88,7 @@ env:
 - `sources.yaml` 里的 `kind` 支持 `rss` 和 `google_news`
 - `language` 建议写 `zh` 或 `en`，便于决定是否翻译
 - 飞书 webhook 的真正图片组件需要 `image_key`，因此当前实现会优先生成卡片，并在只有图片 URL 时显示封面链接；如果后续接入飞书图片上传接口，可直接在卡片中展示真实图片
+
+## 一句话说明
+
+推送每日的 AI 新闻。
