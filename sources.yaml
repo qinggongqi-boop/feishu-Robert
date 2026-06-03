@@ -1,0 +1,30 @@
+sources:
+  - name: 36氪 AI
+    kind: rss
+    language: zh
+    url: https://www.36kr.com/feed
+    enabled: true
+
+  - name: 机器之心
+    kind: rss
+    language: zh
+    url: https://www.jiqizhixin.com/rss
+    enabled: true
+
+  - name: Google News AI
+    kind: google_news
+    language: en
+    query: artificial intelligence
+    hl: en-US
+    gl: US
+    ceid: US:en
+    enabled: true
+
+  - name: Google News 人工智能
+    kind: google_news
+    language: zh
+    query: 人工智能
+    hl: zh-CN
+    gl: CN
+    ceid: CN:zh-Hans
+    enabled: true
