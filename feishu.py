@@ -9,6 +9,15 @@ from typing import Literal
 MessageFormat = Literal["post", "card"]
 
 
+def build_feishu_text_payload(text: str) -> dict:
+    return {
+        "msg_type": "text",
+        "content": {
+            "text": text,
+        },
+    }
+
+
 def _article_block(item: dict[str, str], index: int) -> list[list[dict[str, str]]]:
     tag = item.get("tag", "新闻")
     title = item["title"]
@@ -31,7 +40,7 @@ def _article_block(item: dict[str, str], index: int) -> list[list[dict[str, str]
     ]
 
 
-def _card_article_element(item: dict[str, str], index: int) -> dict:
+def _card_article_elements(item: dict[str, str], index: int) -> list[dict]:
     tag = item.get("tag", "新闻")
     title = item["title"]
     conclusion = item.get("conclusion", "")
@@ -53,25 +62,20 @@ def _card_article_element(item: dict[str, str], index: int) -> dict:
             }
         )
     elif cover:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**配图**：[查看封面图]({cover})"}})
+        elements.append({"tag": "markdown", "content": f"**配图**：[查看封面图]({cover})"})
 
     elements.append(
         {
-            "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": (
-                f"**{index}. [{tag}] [{title}]({url})**\n"
-                f"**一句话结论**：{conclusion}\n"
-                f"**中文摘要**：{summary}\n"
-                f"**来源**：{source}\n"
-                f"**原文链接**：[打开原文]({url})"
-                )
-            },
+            "tag": "markdown",
+            "content": f"**{index}. [{tag}] [{title}]({url})**",
         }
     )
+    elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**一句话结论**：{conclusion}"}})
+    elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**中文摘要**：{summary}"}})
+    elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**来源**：{source}"}})
+    elements.append({"tag": "markdown", "content": f"**原文链接**：[打开原文]({url})"})
 
-    return {"tag": "div", "text": {"tag": "lark_md", "content": ""}, "elements": elements}
+    return elements
 
 
 def build_feishu_post_payload(
@@ -133,7 +137,7 @@ def build_feishu_card_payload(
         )
     else:
         for index, item in enumerate(items, start=1):
-            elements.append(_card_article_element(item, index))
+            elements.extend(_card_article_elements(item, index))
             elements.append({"tag": "hr"})
 
     return {
@@ -142,16 +146,14 @@ def build_feishu_card_payload(
             "schema": "2.0",
             "config": {
                 "wide_screen_mode": True,
-                "update_multi": False,
+                "update_multi": True,
             },
             "header": {
-                "padding": "12px 12px 12px 12px",
                 "template": "blue",
                 "title": {"tag": "plain_text", "content": title},
             },
             "body": {
                 "direction": "vertical",
-                "padding": "12px 12px 12px 12px",
                 "elements": elements,
             },
         },
@@ -176,7 +178,7 @@ def payload_to_json(payload: dict) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
-def send_feishu_webhook(webhook_url: str, payload: dict) -> None:
+def send_feishu_webhook(webhook_url: str, payload: dict) -> str:
     req = request.Request(
         webhook_url,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -195,7 +197,7 @@ def send_feishu_webhook(webhook_url: str, payload: dict) -> None:
         try:
             data = json.loads(body)
         except json.JSONDecodeError:
-            return
+            return body
         if isinstance(data, dict):
             code = data.get("code")
             if isinstance(code, int) and code != 0:
@@ -203,3 +205,4 @@ def send_feishu_webhook(webhook_url: str, payload: dict) -> None:
             status_code = data.get("StatusCode")
             if isinstance(status_code, int) and status_code != 0:
                 raise RuntimeError(f"Feishu webhook rejected payload: {body}")
+    return body

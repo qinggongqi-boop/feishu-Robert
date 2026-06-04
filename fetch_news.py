@@ -250,13 +250,6 @@ def fetch_source_news(
             continue
         article_url = _entry_url(entry)
         image_url = _entry_image_url(entry)
-        if not image_url and article_url:
-            image_url = scrape_article_image(
-                article_url,
-                timeout_seconds=timeout_seconds,
-                retries=retries,
-                user_agent=user_agent,
-            )
         items.append(
             NewsItem(
                 title=str(entry.get("title", "")).strip(),

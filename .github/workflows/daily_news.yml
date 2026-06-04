@@ -7,6 +7,15 @@ on:
   schedule:
     - cron: "13 1 * * *"
   workflow_dispatch:
+    inputs:
+      test_feishu:
+        description: "Send a minimal Feishu test message instead of the daily digest"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: read
@@ -30,6 +39,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Restore sent URL database
+        uses: actions/cache@v4
+        with:
+          path: data/sent_urls.sqlite3
+          key: sent-urls-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            sent-urls-${{ runner.os }}-
+
       - name: Run daily news job
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
@@ -37,9 +54,15 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           APP_TIMEZONE: Asia/Shanghai
+          FEISHU_MESSAGE_FORMAT: post
+          MAX_NEWS_ITEMS: "15"
         run: |
           mkdir -p logs
-          python main.py --send 2>&1 | tee logs/daily_news.log
+          if [ "${{ github.event.inputs.test_feishu || 'false' }}" = "true" ]; then
+            python main.py --test-feishu --send 2>&1 | tee logs/daily_news.log
+          else
+            python main.py --send 2>&1 | tee logs/daily_news.log
+          fi
 
       - name: Upload run logs
         if: always()

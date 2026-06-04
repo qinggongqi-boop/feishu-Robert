@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 from config import load_app_config, load_sources
 from dedupe import filter_unsent, mark_sent
-from fetch_news import dedupe_by_title_similarity, fetch_all_news, filter_items_by_date
-from feishu import build_feishu_payload, payload_to_json, send_feishu_webhook
+from fetch_news import dedupe_by_title_similarity, fetch_all_news, filter_items_by_date, scrape_article_image
+from feishu import build_feishu_payload, build_feishu_text_payload, payload_to_json, send_feishu_webhook
 from summarize import summarize_to_zh
 from translate import translate_to_zh_with_base_url
 
@@ -46,16 +46,42 @@ def enrich_item(item, openai_api_key: str | None, openai_base_url: str, openai_m
     }
 
 
+def attach_article_images(items, timeout_seconds: int, retries: int, user_agent: str) -> None:
+    for item in items:
+        if item.image_url or not item.url:
+            continue
+        item.image_url = scrape_article_image(
+            item.url,
+            timeout_seconds=timeout_seconds,
+            retries=retries,
+            user_agent=user_agent,
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch AI news and prepare Feishu webhook JSON.")
     parser.add_argument("--sources", default="sources.yaml", help="Path to sources.yaml")
     parser.add_argument("--db", default="data/sent_urls.sqlite3", help="SQLite path for sent URLs")
     parser.add_argument("--send", action="store_true", help="Send payload to Feishu webhook")
     parser.add_argument("--date", default=None, help="Target date in YYYY-MM-DD, defaults to yesterday")
+    parser.add_argument("--test-feishu", action="store_true", help="Send a minimal Feishu text payload for webhook testing")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     app = load_app_config(sources_path=args.sources, db_path=args.db)
+    if args.test_feishu:
+        payload = build_feishu_text_payload("Feishu webhook test: AI news bot is reachable.")
+        print(payload_to_json(payload))
+        if args.send:
+            if not app.feishu_webhook_url:
+                raise RuntimeError("FEISHU_WEBHOOK_URL is not set")
+            response_body = send_feishu_webhook(app.feishu_webhook_url, payload)
+            logger.info("Feishu webhook response: %s", response_body or "<empty>")
+            logger.info("Send status: success")
+        else:
+            logger.info("Send status: skipped (dry run)")
+        return 0
+
     sources = load_sources(args.sources)
     target_date = args.date or yesterday_in_tz(app.timezone)
 
@@ -68,12 +94,19 @@ def main() -> int:
     )
     dated_items = filter_items_by_date(fetch_result.items, target_date)
     ranked_items = dedupe_by_title_similarity(dated_items, threshold=0.85)
-    unsent_items = filter_unsent(app.db_path, ranked_items)
+    unsent_items = filter_unsent(app.db_path, ranked_items)[: app.max_news_items]
+    attach_article_images(
+        unsent_items,
+        timeout_seconds=app.fetch_timeout_seconds,
+        retries=1,
+        user_agent=app.user_agent,
+    )
 
     logger.info("Fetched %d items from %d sources", len(fetch_result.items), len(sources))
     logger.info("After date filter (%s): %d items", target_date, len(dated_items))
     logger.info("After title dedupe: %d items", len(ranked_items))
     logger.info("Selected for sending: %d items", len(unsent_items))
+    logger.info("Max news items: %d", app.max_news_items)
     if fetch_result.failed_sources:
         logger.warning("Failed sources: %s", ", ".join(fetch_result.failed_sources))
     else:
@@ -101,7 +134,8 @@ def main() -> int:
     if args.send:
         if not app.feishu_webhook_url:
             raise RuntimeError("FEISHU_WEBHOOK_URL is not set")
-        send_feishu_webhook(app.feishu_webhook_url, payload)
+        response_body = send_feishu_webhook(app.feishu_webhook_url, payload)
+        logger.info("Feishu webhook response: %s", response_body or "<empty>")
         for item in unsent_items:
             mark_sent(app.db_path, item)
         logger.info("Send status: success")

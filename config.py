@@ -32,6 +32,7 @@ class AppConfig:
     openai_base_url: str
     openai_model: str
     feishu_message_format: str
+    max_news_items: int
     fetch_timeout_seconds: int
     fetch_retries: int
     user_agent: str
@@ -85,7 +86,8 @@ def load_app_config(
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
-        feishu_message_format=os.getenv("FEISHU_MESSAGE_FORMAT", "card"),
+        feishu_message_format=os.getenv("FEISHU_MESSAGE_FORMAT", "post"),
+        max_news_items=int(os.getenv("MAX_NEWS_ITEMS", "15")),
         fetch_timeout_seconds=int(os.getenv("FETCH_TIMEOUT_SECONDS", "15")),
         fetch_retries=int(os.getenv("FETCH_RETRIES", "3")),
         user_agent=os.getenv(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from feishu import build_feishu_payload, payload_to_json
+from feishu import build_feishu_payload, build_feishu_text_payload, payload_to_json
 
 
 def test_feishu_payload_matches_webhook_structure():
@@ -68,4 +68,17 @@ def test_feishu_card_payload_includes_card_elements():
     assert payload["card"]["config"]["wide_screen_mode"] is True
     assert payload["card"]["schema"] == "2.0"
     assert payload["card"]["body"]["elements"][0]["tag"] == "div"
-    assert payload["card"]["body"]["elements"][2]["elements"][0]["tag"] == "img"
+    assert payload["card"]["body"]["elements"][2]["tag"] == "img"
+    assert payload["card"]["body"]["elements"][2]["img_key"] == "img_v3_testkey"
+    assert payload["card"]["body"]["elements"][3]["tag"] == "markdown"
+
+
+def test_feishu_text_payload_matches_webhook_format():
+    payload = build_feishu_text_payload("hello")
+
+    assert payload == {
+        "msg_type": "text",
+        "content": {
+            "text": "hello",
+        },
+    }
