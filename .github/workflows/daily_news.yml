@@ -57,6 +57,7 @@ jobs:
           FEISHU_MESSAGE_FORMAT: post
           MAX_NEWS_ITEMS: "15"
         run: |
+          set -o pipefail
           mkdir -p logs
           if [ "${{ github.event.inputs.test_feishu || 'false' }}" = "true" ]; then
             python main.py --test-feishu --send 2>&1 | tee logs/daily_news.log

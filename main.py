@@ -27,14 +27,36 @@ def enrich_item(item, openai_api_key: str | None, openai_base_url: str, openai_m
     title_cn = item.title
     summary_cn = item.summary
     if item.language.lower().startswith("en"):
-        title_cn = translate_to_zh_with_base_url(item.title, openai_api_key, base_url=openai_base_url, model=openai_model)
+        try:
+            title_cn = translate_to_zh_with_base_url(item.title, openai_api_key, base_url=openai_base_url, model=openai_model)
+        except Exception as exc:
+            logger.warning("Title translation failed for %s: %s", item.url, exc)
+            title_cn = item.title
         summary_source = item.summary or item.raw_summary or item.title
-        summary_cn = (
-            translate_to_zh_with_base_url(summary_source, openai_api_key, base_url=openai_base_url, model=openai_model)
-            if summary_source
-            else title_cn
+        if summary_source:
+            try:
+                summary_cn = translate_to_zh_with_base_url(
+                    summary_source,
+                    openai_api_key,
+                    base_url=openai_base_url,
+                    model=openai_model,
+                )
+            except Exception as exc:
+                logger.warning("Summary translation failed for %s: %s", item.url, exc)
+                summary_cn = summary_source
+        else:
+            summary_cn = title_cn
+    try:
+        summary_cn = summarize_to_zh(
+            title_cn,
+            summary_cn or item.summary,
+            openai_api_key,
+            base_url=openai_base_url,
+            model=openai_model,
         )
-    summary_cn = summarize_to_zh(title_cn, summary_cn or item.summary, openai_api_key, base_url=openai_base_url, model=openai_model)
+    except Exception as exc:
+        logger.warning("Summary generation failed for %s: %s", item.url, exc)
+        summary_cn = (summary_cn or item.summary or item.title)[:120].strip()
 
     return {
         "title": title_cn or item.title,
