@@ -79,8 +79,8 @@ def test_english_news_falls_back_when_openai_fails(monkeypatch):
         openai_model="gpt-4.1-mini",
     )
 
-    assert enriched["title"] == item.title
-    assert enriched["summary"] == item.summary
+    assert enriched["title"] == f"海外 AI 新闻：{item.title}"
+    assert enriched["summary"].startswith("这是一条来自 Google News AI 的海外 AI 新闻。原文要点：")
     assert enriched["url"] == item.url
     assert enriched["source"] == item.source
     assert enriched["published_at"] == item.published_at

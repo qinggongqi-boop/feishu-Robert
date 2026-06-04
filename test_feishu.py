@@ -28,7 +28,7 @@ def test_feishu_payload_matches_webhook_structure():
     json_text = payload_to_json(payload)
 
     assert payload["msg_type"] == "post"
-    assert payload["content"]["post"]["zh_cn"]["title"] == "昨日 AI 新闻简报｜2026-06-02"
+    assert payload["content"]["post"]["zh_cn"]["title"] == "AI news 今日｜昨日 AI 新闻简报｜2026-06-02"
     assert isinstance(payload["content"]["post"]["zh_cn"]["content"], list)
     assert payload["content"]["post"]["zh_cn"]["content"][0][0]["text"].endswith("｜共抓取 10 条新闻，精选 1 条")
     assert "AI news 今日" in payload["content"]["post"]["zh_cn"]["content"][0][0]["text"]
@@ -65,7 +65,7 @@ def test_feishu_card_payload_includes_card_elements():
     )
 
     assert payload["msg_type"] == "interactive"
-    assert payload["card"]["header"]["title"]["content"] == "昨日 AI 新闻简报｜2026-06-02"
+    assert payload["card"]["header"]["title"]["content"] == "AI news 今日｜昨日 AI 新闻简报｜2026-06-02"
     assert payload["card"]["config"]["wide_screen_mode"] is True
     assert payload["card"]["schema"] == "2.0"
     assert payload["card"]["body"]["elements"][0]["tag"] == "div"

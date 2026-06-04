@@ -31,6 +31,8 @@ class AppConfig:
     db_path: Path
     timezone: str
     feishu_webhook_url: str | None
+    feishu_app_id: str | None
+    feishu_app_secret: str | None
     openai_api_key: str | None
     openai_base_url: str
     openai_model: str
@@ -39,6 +41,7 @@ class AppConfig:
     max_news_items: int
     fetch_timeout_seconds: int
     fetch_retries: int
+    max_image_uploads: int
     user_agent: str
 
 
@@ -87,6 +90,8 @@ def load_app_config(
         db_path=Path(db_path),
         timezone=os.getenv("APP_TIMEZONE", "Asia/Shanghai"),
         feishu_webhook_url=os.getenv("FEISHU_WEBHOOK_URL"),
+        feishu_app_id=os.getenv("FEISHU_APP_ID"),
+        feishu_app_secret=os.getenv("FEISHU_APP_SECRET"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
@@ -95,6 +100,7 @@ def load_app_config(
         max_news_items=int(os.getenv("MAX_NEWS_ITEMS", "15")),
         fetch_timeout_seconds=int(os.getenv("FETCH_TIMEOUT_SECONDS", "15")),
         fetch_retries=int(os.getenv("FETCH_RETRIES", "3")),
+        max_image_uploads=int(os.getenv("MAX_IMAGE_UPLOADS", "5")),
         user_agent=os.getenv(
             "NEWS_USER_AGENT",
             "Mozilla/5.0 (compatible; AI-News-Bot/1.0; +https://example.com/bot)",

@@ -40,12 +40,16 @@ pip install -r requirements.txt
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 - `OPENAI_MODEL`
+- `FEISHU_APP_ID`，可选，用于上传新闻图片到飞书并在卡片中显示真图
+- `FEISHU_APP_SECRET`，可选，用于上传新闻图片到飞书并在卡片中显示真图
 
 可选配置：
 
 - `OPENAI_MODEL`，默认 `gpt-4.1-mini`
 - `OPENAI_BASE_URL`，默认 `https://api.openai.com/v1`
-- `FEISHU_MESSAGE_FORMAT`，默认 `card`
+- `FEISHU_MESSAGE_FORMAT`，默认 `post`
+- `FEISHU_KEYWORD`，默认 `AI news 今日`，仅在飞书机器人开启关键词校验时需要
+- `MAX_IMAGE_UPLOADS`，默认 `5`，控制每天最多上传几张封面图到飞书
 - `APP_TIMEZONE`，默认 `Asia/Shanghai`
 
 ## 运行方式
@@ -85,14 +89,44 @@ env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
   OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+  FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+  FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
 ```
+
+## 飞书机器人安全设置
+
+如果你希望富文本 `post` 或卡片消息稳定送达，建议在飞书机器人详情中关闭“自定义关键词”校验。
+
+操作方式：
+
+1. 打开目标群聊右侧的机器人设置。
+2. 点击对应机器人详情。
+3. 在“安全设置”里取消勾选“自定义关键词”。
+4. 点击右下角“保存”。
+
+如果保留关键词校验，请确保消息正文或标题包含 `FEISHU_KEYWORD`。当前默认关键词是 `AI news 今日`。
+
+## 显示真正图片
+
+飞书 webhook 不能直接把新闻网站外链图片显示成图片组件。要显示真正图片，需要先调用飞书开放平台图片上传接口，把外链图片上传到飞书，拿到 `image_key` 后再构造卡片。
+
+配置步骤：
+
+1. 进入飞书开放平台，创建或打开一个企业自建应用。
+2. 在“凭证与基础信息”页面复制 `App ID` 和 `App Secret`。
+3. 在应用权限里添加图片上传相关权限，通常需要 `im:resource`。
+4. 发布或启用该应用，使权限生效。
+5. 在 GitHub 仓库 `Settings -> Secrets and variables -> Actions` 中新增：
+   `FEISHU_APP_ID`
+   `FEISHU_APP_SECRET`
+6. 保持 workflow 运行即可。代码会自动下载新闻封面图，上传到飞书并在卡片中展示。
 
 ## 备注
 
 - SQLite 默认路径为 `data/sent_urls.sqlite3`
 - `sources.yaml` 里的 `kind` 支持 `rss` 和 `google_news`
 - `language` 建议写 `zh` 或 `en`，便于决定是否翻译
-- 飞书 webhook 的真正图片组件需要 `image_key`，因此当前实现会优先生成卡片，并在只有图片 URL 时显示封面链接；如果后续接入飞书图片上传接口，可直接在卡片中展示真实图片
+- 未配置 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 时，消息会显示可点击的配图链接
 
 ## 一句话说明
 

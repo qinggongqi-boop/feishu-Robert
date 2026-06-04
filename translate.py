@@ -17,12 +17,17 @@ def _call_openai_chat(
 ) -> str:
     payload = {
         "model": model,
-        "temperature": temperature,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
     }
+    if temperature is not None:
+        payload["temperature"] = temperature
+    return _post_openai_chat(api_key=api_key, base_url=base_url, payload=payload)
+
+
+def _post_openai_chat(api_key: str, base_url: str, payload: dict) -> str:
     chat_url = base_url.rstrip("/") + "/chat/completions"
     req = request.Request(
         chat_url,
@@ -37,9 +42,17 @@ def _call_openai_chat(
         with request.urlopen(req, timeout=60) as resp:
             body = json.loads(resp.read().decode("utf-8"))
     except error.HTTPError as exc:
-        raise RuntimeError(f"OpenAI request failed: {exc.read().decode('utf-8', errors='ignore')}") from exc
+        error_body = exc.read().decode("utf-8", errors="ignore")
+        if "temperature" in error_body and "temperature" in payload:
+            fallback_payload = dict(payload)
+            fallback_payload.pop("temperature", None)
+            return _post_openai_chat(api_key=api_key, base_url=base_url, payload=fallback_payload)
+        raise RuntimeError(f"OpenAI request failed: {error_body}") from exc
 
-    return body["choices"][0]["message"]["content"].strip()
+    try:
+        return body["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"OpenAI response format is unsupported: {body}") from exc
 
 
 def translate_to_zh(text: str, api_key: str | None, model: str = "gpt-4.1-mini") -> str:

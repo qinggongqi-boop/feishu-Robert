@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 from urllib import error, request
+from urllib.parse import urlparse
 
 from typing import Literal
+
+import requests
 
 
 MessageFormat = Literal["post", "card"]
@@ -30,8 +34,12 @@ def build_feishu_text_payload(text: str) -> dict:
     }
 
 
+def _title_with_keyword(title: str, keyword: str) -> str:
+    return title if keyword and keyword in title else f"{keyword}｜{title}"
+
+
 def build_feishu_text_digest_payload(items: list[dict[str, str]], title: str, keyword: str = DEFAULT_FEISHU_KEYWORD) -> dict:
-    lines = [f"{keyword}｜{title}"]
+    lines = [_title_with_keyword(title, keyword)]
     if not items:
         lines.append("今天没有筛选到符合条件的新闻。")
     for index, item in enumerate(items, start=1):
@@ -48,6 +56,74 @@ def build_feishu_text_digest_payload(items: list[dict[str, str]], title: str, ke
     return build_feishu_text_payload("\n".join(lines).strip())
 
 
+def get_tenant_access_token(app_id: str, app_secret: str) -> str:
+    payload = {"app_id": app_id, "app_secret": app_secret}
+    req = request.Request(
+        "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        raise RuntimeError(f"Feishu token request failed: {exc.read().decode('utf-8', errors='ignore')}") from exc
+
+    if body.get("code") != 0:
+        raise RuntimeError(f"Feishu token request rejected: {body}")
+    token = body.get("tenant_access_token")
+    if not token:
+        raise RuntimeError(f"Feishu token response missing tenant_access_token: {body}")
+    return str(token)
+
+
+def _guess_image_filename(image_url: str, content_type: str) -> str:
+    suffix = mimetypes.guess_extension(content_type.split(";")[0].strip()) if content_type else None
+    parsed_name = urlparse(image_url).path.rsplit("/", 1)[-1]
+    if parsed_name and "." in parsed_name:
+        return parsed_name[:80]
+    return f"news-cover{suffix or '.jpg'}"
+
+
+def upload_feishu_image(
+    image_url: str,
+    tenant_access_token: str,
+    timeout_seconds: int = 15,
+    user_agent: str = "Mozilla/5.0 (compatible; AI-News-Bot/1.0)",
+) -> str:
+    response = requests.get(image_url, headers={"User-Agent": user_agent}, timeout=timeout_seconds)
+    response.raise_for_status()
+    content_type = response.headers.get("Content-Type", "image/jpeg")
+    if not content_type.startswith("image/"):
+        raise RuntimeError(f"URL did not return an image: {content_type}")
+
+    files = {
+        "image": (
+            _guess_image_filename(image_url, content_type),
+            response.content,
+            content_type,
+        )
+    }
+    data = {"image_type": "message"}
+    upload_resp = requests.post(
+        "https://open.feishu.cn/open-apis/im/v1/images",
+        headers={"Authorization": f"Bearer {tenant_access_token}"},
+        data=data,
+        files=files,
+        timeout=timeout_seconds,
+    )
+    upload_body = upload_resp.text
+    upload_resp.raise_for_status()
+    parsed = upload_resp.json()
+    if parsed.get("code") != 0:
+        raise RuntimeError(f"Feishu image upload rejected: {upload_body}")
+    image_key = (parsed.get("data") or {}).get("image_key")
+    if not image_key:
+        raise RuntimeError(f"Feishu image upload missing image_key: {upload_body}")
+    return str(image_key)
+
+
 def _article_block(item: dict[str, str], index: int) -> list[list[dict[str, str]]]:
     tag = item.get("tag", "新闻")
     title = item["title"]
@@ -56,7 +132,7 @@ def _article_block(item: dict[str, str], index: int) -> list[list[dict[str, str]
     source = item["source"]
     url = item["url"]
     cover = item.get("cover") or item.get("image_url", "")
-    return [
+    blocks = [
         [
             {"tag": "text", "text": f"{index}. "},
             {"tag": "text", "text": f"[{tag}] ", "style": {"bold": True}},
@@ -65,9 +141,12 @@ def _article_block(item: dict[str, str], index: int) -> list[list[dict[str, str]
         [{"tag": "text", "text": f"一句话结论：{conclusion}"}],
         [{"tag": "text", "text": f"中文摘要：{summary}"}],
         [{"tag": "text", "text": f"来源：{source}"}],
-        [{"tag": "text", "text": f"配图：{cover}"}] if cover else [{"tag": "text", "text": "配图：无"}],
-        [{"tag": "text", "text": f"原文链接：{url}"}],
+        [{"tag": "text", "text": "配图："}, {"tag": "a", "text": "查看配图", "href": cover}]
+        if cover
+        else [{"tag": "text", "text": "配图：无"}],
+        [{"tag": "text", "text": "原文链接："}, {"tag": "a", "text": "打开原文", "href": url}],
     ]
+    return blocks
 
 
 def _card_article_elements(item: dict[str, str], index: int) -> list[dict]:
@@ -138,7 +217,7 @@ def build_feishu_post_payload(
         "content": {
             "post": {
                 "zh_cn": {
-                    "title": title,
+                    "title": _title_with_keyword(title, keyword),
                     "content": content,
                 }
             }
@@ -186,7 +265,7 @@ def build_feishu_card_payload(
             },
             "header": {
                 "template": "blue",
-                "title": {"tag": "plain_text", "content": title},
+                "title": {"tag": "plain_text", "content": _title_with_keyword(title, keyword)},
             },
             "body": {
                 "direction": "vertical",

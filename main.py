@@ -12,9 +12,11 @@ from feishu import (
     build_feishu_payload,
     build_feishu_text_digest_payload,
     build_feishu_text_payload,
+    get_tenant_access_token,
     is_keyword_validation_error,
     payload_to_json,
     send_feishu_webhook,
+    upload_feishu_image,
 )
 from summarize import summarize_to_zh
 from translate import translate_to_zh_with_base_url
@@ -30,15 +32,29 @@ def yesterday_in_tz(tz_name: str) -> str:
     return yesterday.date().isoformat()
 
 
+def chinese_fallback_title(title: str) -> str:
+    return f"海外 AI 新闻：{title}".strip()
+
+
+def chinese_fallback_summary(summary: str, title: str, source: str) -> str:
+    source_text = (summary or title).strip()
+    if not source_text:
+        return f"这是一条来自 {source} 的海外 AI 新闻，建议打开原文查看详情。"
+    return f"这是一条来自 {source} 的海外 AI 新闻。原文要点：{source_text[:100]}"
+
+
 def enrich_item(item, openai_api_key: str | None, openai_base_url: str, openai_model: str) -> dict[str, str]:
     title_cn = item.title
     summary_cn = item.summary
+    title_translated = False
+    summary_translated = False
     if item.language.lower().startswith("en"):
         try:
             title_cn = translate_to_zh_with_base_url(item.title, openai_api_key, base_url=openai_base_url, model=openai_model)
+            title_translated = title_cn != item.title
         except Exception as exc:
             logger.warning("Title translation failed for %s: %s", item.url, exc)
-            title_cn = item.title
+            title_cn = chinese_fallback_title(item.title)
         summary_source = item.summary or item.raw_summary or item.title
         if summary_source:
             try:
@@ -48,11 +64,16 @@ def enrich_item(item, openai_api_key: str | None, openai_base_url: str, openai_m
                     base_url=openai_base_url,
                     model=openai_model,
                 )
+                summary_translated = summary_cn != summary_source
             except Exception as exc:
                 logger.warning("Summary translation failed for %s: %s", item.url, exc)
-                summary_cn = summary_source
+                summary_cn = chinese_fallback_summary(summary_source, item.title, item.source)
         else:
             summary_cn = title_cn
+        if not title_translated and title_cn == item.title:
+            title_cn = chinese_fallback_title(item.title)
+        if not summary_translated and summary_cn == summary_source:
+            summary_cn = chinese_fallback_summary(summary_source, item.title, item.source)
     try:
         summary_cn = summarize_to_zh(
             title_cn,
@@ -85,6 +106,38 @@ def attach_article_images(items, timeout_seconds: int, retries: int, user_agent:
             retries=retries,
             user_agent=user_agent,
         )
+
+
+def attach_feishu_image_keys(
+    items: list[dict[str, str]],
+    app_id: str | None,
+    app_secret: str | None,
+    max_uploads: int,
+    timeout_seconds: int,
+    user_agent: str,
+) -> None:
+    if not app_id or not app_secret or max_uploads <= 0:
+        return
+
+    token = get_tenant_access_token(app_id, app_secret)
+    uploaded = 0
+    for item in items:
+        if uploaded >= max_uploads:
+            break
+        image_url = item.get("cover") or item.get("image_url")
+        if not image_url:
+            continue
+        try:
+            item["image_key"] = upload_feishu_image(
+                image_url,
+                tenant_access_token=token,
+                timeout_seconds=timeout_seconds,
+                user_agent=user_agent,
+            )
+            uploaded += 1
+        except Exception as exc:
+            logger.warning("Feishu image upload failed for %s: %s", item.get("url", image_url), exc)
+    logger.info("Uploaded %d images to Feishu", uploaded)
 
 
 def main() -> int:
@@ -150,12 +203,25 @@ def main() -> int:
         if item.get("image_url"):
             item["cover"] = item["image_url"]
 
+    attach_feishu_image_keys(
+        enriched,
+        app_id=app.feishu_app_id,
+        app_secret=app.feishu_app_secret,
+        max_uploads=app.max_image_uploads,
+        timeout_seconds=app.fetch_timeout_seconds,
+        user_agent=app.user_agent,
+    )
+
+    message_format = app.feishu_message_format
+    if any(item.get("image_key") for item in enriched):
+        message_format = "card"
+
     payload = build_feishu_payload(
         enriched,
         title=f"昨日 AI 新闻简报｜{target_date}",
         total_count=len(fetch_result.items),
         selected_count=len(enriched),
-        message_format=app.feishu_message_format,
+        message_format=message_format,
         keyword=app.feishu_keyword,
     )
 
