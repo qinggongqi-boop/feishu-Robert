@@ -8,7 +8,14 @@ from zoneinfo import ZoneInfo
 from config import load_app_config, load_sources
 from dedupe import filter_unsent, mark_sent
 from fetch_news import dedupe_by_title_similarity, fetch_all_news, filter_items_by_date, scrape_article_image
-from feishu import build_feishu_payload, build_feishu_text_payload, payload_to_json, send_feishu_webhook
+from feishu import (
+    build_feishu_payload,
+    build_feishu_text_digest_payload,
+    build_feishu_text_payload,
+    is_keyword_validation_error,
+    payload_to_json,
+    send_feishu_webhook,
+)
 from summarize import summarize_to_zh
 from translate import translate_to_zh_with_base_url
 
@@ -157,7 +164,18 @@ def main() -> int:
     if args.send:
         if not app.feishu_webhook_url:
             raise RuntimeError("FEISHU_WEBHOOK_URL is not set")
-        response_body = send_feishu_webhook(app.feishu_webhook_url, payload)
+        try:
+            response_body = send_feishu_webhook(app.feishu_webhook_url, payload)
+        except Exception as exc:
+            if not is_keyword_validation_error(exc):
+                raise
+            logger.warning("Feishu post payload failed keyword validation, falling back to text digest")
+            fallback_payload = build_feishu_text_digest_payload(
+                enriched,
+                title=f"昨日 AI 新闻简报｜{target_date}",
+                keyword=app.feishu_keyword,
+            )
+            response_body = send_feishu_webhook(app.feishu_webhook_url, fallback_payload)
         logger.info("Feishu webhook response: %s", response_body or "<empty>")
         for item in unsent_items:
             mark_sent(app.db_path, item)

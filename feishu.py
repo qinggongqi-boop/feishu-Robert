@@ -10,6 +10,17 @@ MessageFormat = Literal["post", "card"]
 DEFAULT_FEISHU_KEYWORD = "AI news 今日"
 
 
+class FeishuWebhookError(RuntimeError):
+    def __init__(self, message: str, response_body: str = "") -> None:
+        super().__init__(message)
+        self.response_body = response_body
+
+
+def is_keyword_validation_error(exc: Exception) -> bool:
+    body = getattr(exc, "response_body", "")
+    return "Key Words Not Found" in body or '"code":19024' in body
+
+
 def build_feishu_text_payload(text: str) -> dict:
     return {
         "msg_type": "text",
@@ -17,6 +28,24 @@ def build_feishu_text_payload(text: str) -> dict:
             "text": text,
         },
     }
+
+
+def build_feishu_text_digest_payload(items: list[dict[str, str]], title: str, keyword: str = DEFAULT_FEISHU_KEYWORD) -> dict:
+    lines = [f"{keyword}｜{title}"]
+    if not items:
+        lines.append("今天没有筛选到符合条件的新闻。")
+    for index, item in enumerate(items, start=1):
+        lines.extend(
+            [
+                f"{index}. [{item.get('tag', '新闻')}] {item['title']}",
+                f"一句话结论：{item.get('conclusion', '')}",
+                f"中文摘要：{item.get('summary', '')}",
+                f"来源：{item.get('source', '')}",
+                f"原文链接：{item.get('url', '')}",
+                "",
+            ]
+        )
+    return build_feishu_text_payload("\n".join(lines).strip())
 
 
 def _article_block(item: dict[str, str], index: int) -> list[list[dict[str, str]]]:
@@ -221,8 +250,8 @@ def send_feishu_webhook(webhook_url: str, payload: dict) -> str:
         if isinstance(data, dict):
             code = data.get("code")
             if isinstance(code, int) and code != 0:
-                raise RuntimeError(f"Feishu webhook rejected payload: {body}")
+                raise FeishuWebhookError(f"Feishu webhook rejected payload: {body}", response_body=body)
             status_code = data.get("StatusCode")
             if isinstance(status_code, int) and status_code != 0:
-                raise RuntimeError(f"Feishu webhook rejected payload: {body}")
+                raise FeishuWebhookError(f"Feishu webhook rejected payload: {body}", response_body=body)
     return body

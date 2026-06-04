@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from feishu import build_feishu_payload, build_feishu_text_payload, payload_to_json
+from feishu import build_feishu_payload, build_feishu_text_digest_payload, build_feishu_text_payload, payload_to_json
 
 
 def test_feishu_payload_matches_webhook_structure():
@@ -96,3 +96,26 @@ def test_feishu_payload_includes_custom_keyword():
     )
 
     assert payload["content"]["post"]["zh_cn"]["content"][0][0]["text"] == "自定义关键词｜共抓取 10 条新闻，精选 0 条"
+
+
+def test_feishu_text_digest_payload_includes_keyword_and_links():
+    payload = build_feishu_text_digest_payload(
+        [
+            {
+                "title": "中文标题",
+                "url": "https://example.com/article",
+                "source": "Google News AI",
+                "summary": "中文摘要",
+                "tag": "海外",
+                "conclusion": "模型能力有明显提升",
+            }
+        ],
+        title="昨日 AI 新闻简报｜2026-06-02",
+        keyword="AI news 今日",
+    )
+
+    text = payload["content"]["text"]
+    assert payload["msg_type"] == "text"
+    assert text.startswith("AI news 今日｜昨日 AI 新闻简报｜2026-06-02")
+    assert "https://example.com/article" in text
+    assert "中文标题" in text
