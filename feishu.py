@@ -87,7 +87,11 @@ def build_feishu_post_payload(
     content: list[list[dict[str, str]]] = []
     content.append(
         [
-            {"tag": "text", "text": f"共抓取 {total_count} 条新闻，精选 {selected_count} 条", "style": {"bold": True}}
+            {
+                "tag": "text",
+                "text": f"AI 新闻｜共抓取 {total_count} 条新闻，精选 {selected_count} 条",
+                "style": {"bold": True},
+            }
         ]
     )
     content.append([{"tag": "text", "text": ""}])

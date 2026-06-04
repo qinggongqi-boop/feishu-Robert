@@ -30,7 +30,7 @@ def test_feishu_payload_matches_webhook_structure():
     assert payload["msg_type"] == "post"
     assert payload["content"]["post"]["zh_cn"]["title"] == "昨日 AI 新闻简报｜2026-06-02"
     assert isinstance(payload["content"]["post"]["zh_cn"]["content"], list)
-    assert payload["content"]["post"]["zh_cn"]["content"][0][0]["text"] == "共抓取 10 条新闻，精选 1 条"
+    assert payload["content"]["post"]["zh_cn"]["content"][0][0]["text"] == "AI 新闻｜共抓取 10 条新闻，精选 1 条"
     assert "中文标题" in json_text
     assert "https://example.com/article" in json_text
     assert "一句话结论" in json_text
