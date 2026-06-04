@@ -92,7 +92,7 @@ def main() -> int:
 
     app = load_app_config(sources_path=args.sources, db_path=args.db)
     if args.test_feishu:
-        payload = build_feishu_text_payload("AI 新闻｜Feishu webhook test: bot is reachable.")
+        payload = build_feishu_text_payload(f"{app.feishu_keyword}｜Feishu webhook test: bot is reachable.")
         print(payload_to_json(payload))
         if args.send:
             if not app.feishu_webhook_url:
@@ -149,6 +149,7 @@ def main() -> int:
         total_count=len(fetch_result.items),
         selected_count=len(enriched),
         message_format=app.feishu_message_format,
+        keyword=app.feishu_keyword,
     )
 
     print(payload_to_json(payload))

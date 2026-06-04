@@ -7,6 +7,7 @@ from typing import Literal
 
 
 MessageFormat = Literal["post", "card"]
+DEFAULT_FEISHU_KEYWORD = "AI news 今日"
 
 
 def build_feishu_text_payload(text: str) -> dict:
@@ -83,13 +84,14 @@ def build_feishu_post_payload(
     title: str,
     total_count: int,
     selected_count: int,
+    keyword: str = DEFAULT_FEISHU_KEYWORD,
 ) -> dict:
     content: list[list[dict[str, str]]] = []
     content.append(
         [
             {
                 "tag": "text",
-                "text": f"AI 新闻｜共抓取 {total_count} 条新闻，精选 {selected_count} 条",
+                "text": f"{keyword}｜共抓取 {total_count} 条新闻，精选 {selected_count} 条",
                 "style": {"bold": True},
             }
         ]
@@ -120,13 +122,14 @@ def build_feishu_card_payload(
     title: str,
     total_count: int,
     selected_count: int,
+    keyword: str = DEFAULT_FEISHU_KEYWORD,
 ) -> dict:
     elements: list[dict] = [
         {
             "tag": "div",
             "text": {
                 "tag": "lark_md",
-                "content": f"**共抓取 {total_count} 条新闻，精选 {selected_count} 条**",
+                "content": f"**{keyword}｜共抓取 {total_count} 条新闻，精选 {selected_count} 条**",
             },
         },
         {"tag": "hr"},
@@ -170,12 +173,25 @@ def build_feishu_payload(
     total_count: int | None = None,
     selected_count: int | None = None,
     message_format: MessageFormat = "post",
+    keyword: str = DEFAULT_FEISHU_KEYWORD,
 ) -> dict:
     total = len(items) if total_count is None else total_count
     selected = len(items) if selected_count is None else selected_count
     if message_format == "card":
-        return build_feishu_card_payload(items, title=title, total_count=total, selected_count=selected)
-    return build_feishu_post_payload(items, title=title, total_count=total, selected_count=selected)
+        return build_feishu_card_payload(
+            items,
+            title=title,
+            total_count=total,
+            selected_count=selected,
+            keyword=keyword,
+        )
+    return build_feishu_post_payload(
+        items,
+        title=title,
+        total_count=total,
+        selected_count=selected,
+        keyword=keyword,
+    )
 
 
 def payload_to_json(payload: dict) -> str:

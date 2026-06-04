@@ -53,6 +53,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          FEISHU_KEYWORD: ${{ secrets.FEISHU_KEYWORD }}
           APP_TIMEZONE: Asia/Shanghai
           FEISHU_MESSAGE_FORMAT: post
           MAX_NEWS_ITEMS: "15"

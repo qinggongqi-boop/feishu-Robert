@@ -30,7 +30,8 @@ def test_feishu_payload_matches_webhook_structure():
     assert payload["msg_type"] == "post"
     assert payload["content"]["post"]["zh_cn"]["title"] == "昨日 AI 新闻简报｜2026-06-02"
     assert isinstance(payload["content"]["post"]["zh_cn"]["content"], list)
-    assert payload["content"]["post"]["zh_cn"]["content"][0][0]["text"] == "AI 新闻｜共抓取 10 条新闻，精选 1 条"
+    assert payload["content"]["post"]["zh_cn"]["content"][0][0]["text"].endswith("｜共抓取 10 条新闻，精选 1 条")
+    assert "AI news 今日" in payload["content"]["post"]["zh_cn"]["content"][0][0]["text"]
     assert "中文标题" in json_text
     assert "https://example.com/article" in json_text
     assert "一句话结论" in json_text
@@ -82,3 +83,16 @@ def test_feishu_text_payload_matches_webhook_format():
             "text": "hello",
         },
     }
+
+
+def test_feishu_payload_includes_custom_keyword():
+    payload = build_feishu_payload(
+        [],
+        title="昨日 AI 新闻简报｜2026-06-02",
+        total_count=10,
+        selected_count=0,
+        message_format="post",
+        keyword="自定义关键词",
+    )
+
+    assert payload["content"]["post"]["zh_cn"]["content"][0][0]["text"] == "自定义关键词｜共抓取 10 条新闻，精选 0 条"
