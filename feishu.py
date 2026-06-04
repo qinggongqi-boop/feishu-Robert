@@ -53,22 +53,25 @@ def _card_article_element(item: dict[str, str], index: int) -> dict:
             }
         )
     elif cover:
-        elements.append({"tag": "markdown", "content": f"**配图**：[查看封面图]({cover})"})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**配图**：[查看封面图]({cover})"}})
 
     elements.append(
         {
-            "tag": "markdown",
-            "content": (
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": (
                 f"**{index}. [{tag}] [{title}]({url})**\n"
                 f"**一句话结论**：{conclusion}\n"
                 f"**中文摘要**：{summary}\n"
                 f"**来源**：{source}\n"
                 f"**原文链接**：[打开原文]({url})"
-            ),
+                )
+            },
         }
     )
 
-    return {"tag": "div", "text": {"tag": "lark_md", "content": ""}, "fields": [], "elements": elements}
+    return {"tag": "div", "text": {"tag": "lark_md", "content": ""}, "elements": elements}
 
 
 def build_feishu_post_payload(
@@ -136,12 +139,21 @@ def build_feishu_card_payload(
     return {
         "msg_type": "interactive",
         "card": {
-            "config": {"wide_screen_mode": True},
+            "schema": "2.0",
+            "config": {
+                "wide_screen_mode": True,
+                "update_multi": False,
+            },
             "header": {
+                "padding": "12px 12px 12px 12px",
                 "template": "blue",
                 "title": {"tag": "plain_text", "content": title},
             },
-            "elements": elements,
+            "body": {
+                "direction": "vertical",
+                "padding": "12px 12px 12px 12px",
+                "elements": elements,
+            },
         },
     }
 
@@ -173,6 +185,21 @@ def send_feishu_webhook(webhook_url: str, payload: dict) -> None:
     )
     try:
         with request.urlopen(req, timeout=30) as resp:
-            resp.read()
+            body = resp.read().decode("utf-8", errors="ignore")
     except error.HTTPError as exc:
         raise RuntimeError(f"Feishu webhook failed: {exc.read().decode('utf-8', errors='ignore')}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Feishu webhook request failed: {exc}") from exc
+
+    if body:
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            return
+        if isinstance(data, dict):
+            code = data.get("code")
+            if isinstance(code, int) and code != 0:
+                raise RuntimeError(f"Feishu webhook rejected payload: {body}")
+            status_code = data.get("StatusCode")
+            if isinstance(status_code, int) and status_code != 0:
+                raise RuntimeError(f"Feishu webhook rejected payload: {body}")

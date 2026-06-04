@@ -1,14 +1,16 @@
 sources:
+  - name: OpenAI News
+    kind: rss
+    language: en
+    url: https://openai.com/news/rss.xml
+    priority: 100
+    enabled: true
+
   - name: 36氪 AI
     kind: rss
     language: zh
     url: https://www.36kr.com/feed
-    enabled: true
-
-  - name: 机器之心
-    kind: rss
-    language: zh
-    url: https://www.jiqizhixin.com/rss
+    priority: 90
     enabled: true
 
   - name: Google News AI
@@ -18,6 +20,7 @@ sources:
     hl: en-US
     gl: US
     ceid: US:en
+    priority: 80
     enabled: true
 
   - name: Google News 人工智能
@@ -27,4 +30,16 @@ sources:
     hl: zh-CN
     gl: CN
     ceid: CN:zh-Hans
+    priority: 70
     enabled: true
+
+  - name: Google News AI Startup
+    kind: google_news
+    language: en
+    query: AI startup OR artificial intelligence startup
+    hl: en-US
+    gl: US
+    ceid: US:en
+    priority: 60
+    enabled: true
+

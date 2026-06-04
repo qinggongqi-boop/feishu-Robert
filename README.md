@@ -38,10 +38,13 @@ pip install -r requirements.txt
 
 - `FEISHU_WEBHOOK_URL`
 - `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `OPENAI_MODEL`
 
 可选配置：
 
 - `OPENAI_MODEL`，默认 `gpt-4.1-mini`
+- `OPENAI_BASE_URL`，默认 `https://api.openai.com/v1`
 - `FEISHU_MESSAGE_FORMAT`，默认 `card`
 - `APP_TIMEZONE`，默认 `Asia/Shanghai`
 
@@ -80,6 +83,8 @@ python main.py --date 2026-06-02
 env:
   FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+  OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
 ```
 
 ## 备注

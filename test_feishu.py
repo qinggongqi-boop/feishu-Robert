@@ -66,5 +66,6 @@ def test_feishu_card_payload_includes_card_elements():
     assert payload["msg_type"] == "interactive"
     assert payload["card"]["header"]["title"]["content"] == "昨日 AI 新闻简报｜2026-06-02"
     assert payload["card"]["config"]["wide_screen_mode"] is True
-    assert payload["card"]["elements"][0]["tag"] == "div"
-    assert payload["card"]["elements"][2]["elements"][0]["tag"] == "img"
+    assert payload["card"]["schema"] == "2.0"
+    assert payload["card"]["body"]["elements"][0]["tag"] == "div"
+    assert payload["card"]["body"]["elements"][2]["elements"][0]["tag"] == "img"

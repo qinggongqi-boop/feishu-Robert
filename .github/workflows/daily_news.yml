@@ -1,6 +1,9 @@
 name: Daily AI News
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     - cron: "13 1 * * *"
   workflow_dispatch:
@@ -31,6 +34,8 @@ jobs:
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           APP_TIMEZONE: Asia/Shanghai
         run: |
           mkdir -p logs
