@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from urllib import request, error
 
+import requests
+
 
 OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -76,3 +78,26 @@ def translate_to_zh_with_base_url(
         system_prompt="You are a professional translation assistant. Translate the user text into concise, natural Chinese. Keep product names and proper nouns accurate.",
         user_prompt=text,
     )
+
+
+def translate_to_zh_fallback(text: str) -> str:
+    """Best-effort no-key translation fallback used when the OpenAI-compatible API is unavailable."""
+    source_text = text.strip()
+    if not source_text:
+        return ""
+    try:
+        response = requests.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={"client": "gtx", "sl": "auto", "tl": "zh-CN", "dt": "t", "q": source_text},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; AI-News-Bot/1.0)"},
+            timeout=15,
+        )
+        response.raise_for_status()
+        body = response.json()
+    except Exception:
+        return source_text
+    try:
+        translated = "".join(part[0] for part in body[0] if part and part[0])
+    except (KeyError, IndexError, TypeError):
+        return source_text
+    return translated.strip() or source_text

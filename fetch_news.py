@@ -19,6 +19,32 @@ from config import SourceConfig
 
 
 logger = logging.getLogger(__name__)
+TEXT_NOISE_KEYWORDS = {
+    "advertisement",
+    "advertising",
+    "search",
+    "home",
+    "top stories",
+    "latest stories",
+    "main navigation",
+    "facebook",
+    "twitter",
+    "listen",
+    "read more",
+    "subscribe",
+    "newsletter",
+    "cookie",
+    "privacy policy",
+    "terms of service",
+}
+
+
+@dataclass
+class ArticleMetadata:
+    title: str = ""
+    description: str = ""
+    image_url: str = ""
+    text: str = ""
 
 
 @dataclass
@@ -266,6 +292,75 @@ def _extract_image_from_html(html_text: str) -> str:
         if match:
             return canonicalize_url(html.unescape(match.group(1).strip()))
     return ""
+
+
+def _extract_meta_content(html_text: str, names: tuple[str, ...]) -> str:
+    for name in names:
+        patterns = [
+            rf'<meta[^>]+property=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+name=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']{re.escape(name)}["\']',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html_text, flags=re.IGNORECASE)
+            if match:
+                return html.unescape(match.group(1).strip())
+    return ""
+
+
+def _extract_title_from_html(html_text: str) -> str:
+    meta_title = _extract_meta_content(html_text, ("og:title", "twitter:title"))
+    if meta_title:
+        return meta_title
+    match = re.search(r"<title[^>]*>(.*?)</title>", html_text, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    return re.sub(r"\s+", " ", html.unescape(match.group(1))).strip()
+
+
+def _extract_text_from_html(html_text: str, max_chars: int = 1400) -> str:
+    html_text = re.sub(r"<script[^>]*>.*?</script>", " ", html_text, flags=re.IGNORECASE | re.DOTALL)
+    html_text = re.sub(r"<style[^>]*>.*?</style>", " ", html_text, flags=re.IGNORECASE | re.DOTALL)
+    candidates = re.findall(r"<p[^>]*>(.*?)</p>", html_text, flags=re.IGNORECASE | re.DOTALL)
+    paragraphs: list[str] = []
+    for candidate in candidates:
+        text = re.sub(r"<[^>]+>", " ", candidate)
+        text = re.sub(r"\s+", " ", html.unescape(text)).strip()
+        if len(text) < 40:
+            continue
+        lower_text = text.lower()
+        if sum(keyword in lower_text for keyword in TEXT_NOISE_KEYWORDS) >= 2:
+            continue
+        if "{" in text and "}" in text:
+            continue
+        if text.count(";") >= 4 or text.count("!important") >= 1:
+            continue
+        paragraphs.append(text)
+        if sum(len(paragraph) for paragraph in paragraphs) >= max_chars:
+            break
+    return " ".join(paragraphs)[:max_chars].strip()
+
+
+def extract_article_metadata_from_html(html_text: str) -> ArticleMetadata:
+    return ArticleMetadata(
+        title=_extract_title_from_html(html_text),
+        description=_extract_meta_content(html_text, ("og:description", "description", "twitter:description")),
+        image_url=_extract_image_from_html(html_text),
+        text=_extract_text_from_html(html_text),
+    )
+
+
+def scrape_article_metadata(url: str, timeout_seconds: int, retries: int, user_agent: str) -> ArticleMetadata:
+    if not url:
+        return ArticleMetadata()
+    try:
+        html_text = _fetch_html(url, timeout_seconds=timeout_seconds, retries=retries, user_agent=user_agent)
+    except Exception:
+        return ArticleMetadata()
+    metadata = extract_article_metadata_from_html(html_text)
+    if metadata.image_url:
+        metadata.image_url = canonicalize_url(metadata.image_url)
+    return metadata
 
 
 def scrape_article_image(url: str, timeout_seconds: int, retries: int, user_agent: str) -> str:

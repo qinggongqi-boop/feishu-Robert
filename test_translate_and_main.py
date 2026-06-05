@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from fetch_news import ArticleMetadata
 from fetch_news import NewsItem
 from main import enrich_item, select_balanced_items
 
@@ -43,8 +44,10 @@ def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
     assert enriched["url"] == item.url
     assert enriched["source"] == item.source
     assert enriched["published_at"] == item.published_at
-    assert enriched["summary"] == "中文摘要：这是一条新闻"
-    assert len(calls["translate"]) == 2
+    assert enriched["summary"].startswith("中文摘要：这是一条新闻")
+    assert len(enriched["summary"]) >= 80
+    assert enriched["original_title"] == item.raw_title
+    assert len(calls["translate"]) == 1
     assert len(calls["summarize"]) == 1
 
 
@@ -57,6 +60,15 @@ def test_english_news_falls_back_when_openai_fails(monkeypatch):
 
     monkeypatch.setattr("main.translate_to_zh_with_base_url", failing_translate)
     monkeypatch.setattr("main.summarize_to_zh", failing_summarize)
+    monkeypatch.setattr(
+        "main.translate_to_zh_fallback",
+            lambda text: {
+                "OpenAI launches a new model": "OpenAI 发布新模型",
+                "The new model improves reasoning. The launch gives developers stronger coding, analysis and planning capabilities.": (
+                    "新模型提升了推理能力。此次发布为开发者带来更强的编码、分析和规划能力。"
+                ),
+        }.get(text, text),
+    )
 
     item = NewsItem(
         title="OpenAI launches a new model",
@@ -71,16 +83,24 @@ def test_english_news_falls_back_when_openai_fails(monkeypatch):
         raw_title="OpenAI launches a new model",
         raw_summary="The new model improves reasoning.",
     )
+    metadata = ArticleMetadata(
+        title="OpenAI launches a new model",
+        description="The new model improves reasoning.",
+        text="The launch gives developers stronger coding, analysis and planning capabilities.",
+    )
 
     enriched = enrich_item(
         item,
         openai_api_key="test-key",
         openai_base_url="https://api.example.com/v1",
         openai_model="gpt-4.1-mini",
+        metadata=metadata,
     )
 
-    assert enriched["title"] == f"海外 AI 新闻：{item.title}"
-    assert enriched["summary"].startswith("这是一条来自 Google News AI 的海外 AI 新闻。原文要点：")
+    assert enriched["title"] == "OpenAI 发布新模型"
+    assert enriched["original_title"] == item.raw_title
+    assert enriched["summary"].startswith("据 Google News AI 报道，")
+    assert "新模型提升了推理能力" in enriched["summary"]
     assert enriched["url"] == item.url
     assert enriched["source"] == item.source
     assert enriched["published_at"] == item.published_at
