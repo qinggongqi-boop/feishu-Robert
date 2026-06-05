@@ -25,6 +25,11 @@ def is_keyword_validation_error(exc: Exception) -> bool:
     return "Key Words Not Found" in body or '"code":19024' in body
 
 
+def is_payload_validation_error(exc: Exception) -> bool:
+    body = getattr(exc, "response_body", "")
+    return "params error" in body or '"code":19002' in body
+
+
 def build_feishu_text_payload(text: str) -> dict:
     return {
         "msg_type": "text",
@@ -132,20 +137,28 @@ def _article_block(item: dict[str, str], index: int) -> list[list[dict[str, str]
     source = item["source"]
     url = item["url"]
     cover = item.get("cover") or item.get("image_url", "")
+    title_line = [
+        {"tag": "text", "text": f"{index}. "},
+        {"tag": "text", "text": f"[{tag}] ", "style": {"bold": True}},
+    ]
+    if url:
+        title_line.append({"tag": "a", "text": title, "href": url})
+    else:
+        title_line.append({"tag": "text", "text": title})
+
     blocks = [
-        [
-            {"tag": "text", "text": f"{index}. "},
-            {"tag": "text", "text": f"[{tag}] ", "style": {"bold": True}},
-            {"tag": "a", "text": title, "href": url},
-        ],
+        title_line,
         [{"tag": "text", "text": f"一句话结论：{conclusion}"}],
         [{"tag": "text", "text": f"中文摘要：{summary}"}],
         [{"tag": "text", "text": f"来源：{source}"}],
         [{"tag": "text", "text": "配图："}, {"tag": "a", "text": "查看配图", "href": cover}]
         if cover
         else [{"tag": "text", "text": "配图：无"}],
-        [{"tag": "text", "text": "原文链接："}, {"tag": "a", "text": "打开原文", "href": url}],
     ]
+    if url:
+        blocks.append([{"tag": "text", "text": "原文链接："}, {"tag": "a", "text": "打开原文", "href": url}])
+    else:
+        blocks.append([{"tag": "text", "text": "原文链接：无"}])
     return blocks
 
 

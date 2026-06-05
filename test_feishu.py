@@ -119,3 +119,26 @@ def test_feishu_text_digest_payload_includes_keyword_and_links():
     assert text.startswith("AI news 今日｜昨日 AI 新闻简报｜2026-06-02")
     assert "https://example.com/article" in text
     assert "中文标题" in text
+
+
+def test_feishu_post_payload_does_not_emit_empty_href():
+    payload = build_feishu_payload(
+        [
+            {
+                "title": "中文标题",
+                "url": "",
+                "source": "Google News AI",
+                "summary": "中文摘要",
+                "tag": "海外",
+                "conclusion": "模型能力有明显提升",
+            }
+        ],
+        title="昨日 AI 新闻简报｜2026-06-02",
+        total_count=1,
+        selected_count=1,
+        message_format="post",
+    )
+
+    json_text = payload_to_json(payload)
+    assert '"href": ""' not in json_text
+    assert "原文链接：无" in json_text

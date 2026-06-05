@@ -14,6 +14,7 @@ from feishu import (
     build_feishu_text_payload,
     get_tenant_access_token,
     is_keyword_validation_error,
+    is_payload_validation_error,
     payload_to_json,
     send_feishu_webhook,
     upload_feishu_image,
@@ -233,9 +234,9 @@ def main() -> int:
         try:
             response_body = send_feishu_webhook(app.feishu_webhook_url, payload)
         except Exception as exc:
-            if not is_keyword_validation_error(exc):
+            if not (is_keyword_validation_error(exc) or is_payload_validation_error(exc)):
                 raise
-            logger.warning("Feishu post payload failed keyword validation, falling back to text digest")
+            logger.warning("Feishu rich payload failed validation, falling back to text digest: %s", exc)
             fallback_payload = build_feishu_text_digest_payload(
                 enriched,
                 title=f"昨日 AI 新闻简报｜{target_date}",
