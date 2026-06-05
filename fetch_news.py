@@ -130,6 +130,112 @@ def _entry_image_url(entry: dict) -> str:
     return ""
 
 
+def is_google_news_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.netloc.endswith("news.google.com") and "/articles/" in parsed.path
+
+
+def is_google_news_placeholder_image(url: str) -> bool:
+    parsed = urlparse(url)
+    if not parsed.netloc.endswith("googleusercontent.com"):
+        return False
+    return "J6_coFbogxhRI9iM864NL_liGXvsQp2AupsKei7z0cNNfDvGUmWUy20nuUhkREQyrpY4bEeIBuc" in parsed.path
+
+
+def _extract_google_news_article_params(html_text: str) -> tuple[str, str, str] | None:
+    article_id_match = re.search(r'data-n-a-id="([^"]+)"', html_text)
+    timestamp_match = re.search(r'data-n-a-ts="([^"]+)"', html_text)
+    signature_match = re.search(r'data-n-a-sg="([^"]+)"', html_text)
+    if not article_id_match or not timestamp_match or not signature_match:
+        return None
+    return (
+        html.unescape(article_id_match.group(1)),
+        html.unescape(timestamp_match.group(1)),
+        html.unescape(signature_match.group(1)),
+    )
+
+
+def resolve_google_news_url(url: str, timeout_seconds: int, retries: int, user_agent: str) -> str:
+    if not is_google_news_url(url):
+        return url
+    try:
+        html_text = _fetch_html(url, timeout_seconds=timeout_seconds, retries=retries, user_agent=user_agent)
+    except Exception:
+        return url
+    params = _extract_google_news_article_params(html_text)
+    if not params:
+        return url
+
+    article_id, timestamp, signature = params
+    try:
+        timestamp_int = int(timestamp)
+    except ValueError:
+        return url
+
+    request_data = [
+        "garturlreq",
+        [
+            [
+                "en-US",
+                "US",
+                ["FINANCE_TOP_INDICES", "WEB_TEST_1_0_0"],
+                None,
+                None,
+                1,
+                1,
+                "US:en",
+                None,
+                180,
+                None,
+                None,
+                None,
+                None,
+                None,
+                0,
+                None,
+                None,
+                [timestamp_int, 0],
+            ],
+            "en-US",
+            "US",
+            1,
+            [2, 3, 4, 8],
+            1,
+            0,
+            "655000234",
+            0,
+            0,
+            None,
+            0,
+        ],
+        article_id,
+        timestamp_int,
+        signature,
+    ]
+    batched_payload = [[["Fbv4je", json.dumps(request_data, separators=(",", ":")), None, "generic"]]]
+    headers = {
+        "User-Agent": user_agent,
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+    }
+    try:
+        response = requests.post(
+            "https://news.google.com/_/DotsSplashUi/data/batchexecute?rpcids=Fbv4je",
+            headers=headers,
+            data={"f.req": json.dumps(batched_payload, separators=(",", ":"))},
+            timeout=timeout_seconds,
+        )
+        response.raise_for_status()
+    except Exception:
+        return url
+
+    match = re.search(r'\[\\"garturlres\\",\\"(https?://[^"\\]+)', response.text)
+    if not match:
+        match = re.search(r'\["garturlres","(https?://[^"\\]+)', response.text)
+    if not match:
+        return url
+    return canonicalize_url(html.unescape(match.group(1)))
+
+
 def _fetch_html(url: str, timeout_seconds: int, retries: int, user_agent: str) -> str:
     headers = {
         "User-Agent": user_agent,

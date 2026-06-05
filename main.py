@@ -9,7 +9,15 @@ from zoneinfo import ZoneInfo
 
 from config import load_app_config, load_sources
 from dedupe import filter_unsent, mark_sent, mark_sent_url
-from fetch_news import dedupe_by_title_similarity, fetch_all_news, filter_items_by_date, scrape_article_image
+from fetch_news import (
+    dedupe_by_title_similarity,
+    fetch_all_news,
+    filter_items_by_date,
+    is_google_news_placeholder_image,
+    is_google_news_url,
+    resolve_google_news_url,
+    scrape_article_image,
+)
 from feishu import (
     build_feishu_text_payload,
     payload_to_json,
@@ -100,14 +108,27 @@ def enrich_item(item, openai_api_key: str | None, openai_base_url: str, openai_m
 
 def attach_article_images(items, timeout_seconds: int, retries: int, user_agent: str) -> None:
     for item in items:
-        if item.image_url or not item.url:
+        if not item.url:
             continue
-        item.image_url = scrape_article_image(
+        if is_google_news_url(item.url):
+            resolved_url = resolve_google_news_url(
+                item.url,
+                timeout_seconds=timeout_seconds,
+                retries=retries,
+                user_agent=user_agent,
+            )
+            if resolved_url != item.url:
+                item.url = resolved_url
+        existing_image = item.image_url
+        if existing_image and not is_google_news_placeholder_image(existing_image):
+            continue
+        scraped_image = scrape_article_image(
             item.url,
             timeout_seconds=timeout_seconds,
             retries=retries,
             user_agent=user_agent,
         )
+        item.image_url = scraped_image or ("" if is_google_news_placeholder_image(existing_image) else existing_image)
 
 
 def is_overseas_item(item) -> bool:
