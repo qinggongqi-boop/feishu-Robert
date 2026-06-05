@@ -1,29 +1,28 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from config import load_app_config, load_sources
-from dedupe import filter_unsent, mark_sent
+from dedupe import filter_unsent, mark_sent, mark_sent_url
 from fetch_news import dedupe_by_title_similarity, fetch_all_news, filter_items_by_date, scrape_article_image
 from feishu import (
-    build_feishu_payload,
-    build_feishu_text_digest_payload,
     build_feishu_text_payload,
-    get_tenant_access_token,
-    is_keyword_validation_error,
-    is_payload_validation_error,
     payload_to_json,
     send_feishu_webhook,
-    upload_feishu_image,
 )
+from report import write_report
 from summarize import summarize_to_zh
 from translate import translate_to_zh_with_base_url
 
 
 logger = logging.getLogger(__name__)
+DOMESTIC_MIN_ITEMS = 4
+OVERSEAS_MIN_ITEMS = 6
 
 
 def yesterday_in_tz(tz_name: str) -> str:
@@ -41,7 +40,7 @@ def chinese_fallback_summary(summary: str, title: str, source: str) -> str:
     source_text = (summary or title).strip()
     if not source_text:
         return f"这是一条来自 {source} 的海外 AI 新闻，建议打开原文查看详情。"
-    return f"这是一条来自 {source} 的海外 AI 新闻。原文要点：{source_text[:100]}"
+    return f"这是一条来自 {source} 的海外 AI 新闻。原文要点：{source_text[:260]}"
 
 
 def enrich_item(item, openai_api_key: str | None, openai_base_url: str, openai_model: str) -> dict[str, str]:
@@ -89,11 +88,13 @@ def enrich_item(item, openai_api_key: str | None, openai_base_url: str, openai_m
 
     return {
         "title": title_cn or item.title,
+        "original_title": item.raw_title or item.title,
         "url": item.url,
         "source": item.source,
         "published_at": item.published_at,
         "summary": summary_cn or item.summary or item.title,
         "image_url": item.image_url,
+        "image_urls": [item.image_url] if item.image_url else [],
     }
 
 
@@ -109,36 +110,101 @@ def attach_article_images(items, timeout_seconds: int, retries: int, user_agent:
         )
 
 
-def attach_feishu_image_keys(
-    items: list[dict[str, str]],
-    app_id: str | None,
-    app_secret: str | None,
-    max_uploads: int,
-    timeout_seconds: int,
-    user_agent: str,
-) -> None:
-    if not app_id or not app_secret or max_uploads <= 0:
-        return
+def is_overseas_item(item) -> bool:
+    return item.language.lower().startswith("en")
 
-    token = get_tenant_access_token(app_id, app_secret)
-    uploaded = 0
-    for item in items:
-        if uploaded >= max_uploads:
+
+def select_balanced_items(items, max_items: int) -> list:
+    overseas_items = [item for item in items if is_overseas_item(item)]
+    domestic_items = [item for item in items if not is_overseas_item(item)]
+    selected: list = []
+    seen_urls: set[str] = set()
+
+    def add_from(candidates, limit: int) -> None:
+        added = 0
+        for candidate in candidates:
+            if len(selected) >= max_items or added >= limit:
+                break
+            if candidate.url in seen_urls:
+                continue
+            selected.append(candidate)
+            seen_urls.add(candidate.url)
+            added += 1
+
+    add_from(overseas_items, min(OVERSEAS_MIN_ITEMS, max_items))
+    add_from(domestic_items, min(DOMESTIC_MIN_ITEMS, max_items - len(selected)))
+    for candidate in items:
+        if len(selected) >= max_items:
             break
-        image_url = item.get("cover") or item.get("image_url")
-        if not image_url:
+        if candidate.url in seen_urls:
             continue
-        try:
-            item["image_key"] = upload_feishu_image(
-                image_url,
-                tenant_access_token=token,
-                timeout_seconds=timeout_seconds,
-                user_agent=user_agent,
-            )
-            uploaded += 1
-        except Exception as exc:
-            logger.warning("Feishu image upload failed for %s: %s", item.get("url", image_url), exc)
-    logger.info("Uploaded %d images to Feishu", uploaded)
+        selected.append(candidate)
+        seen_urls.add(candidate.url)
+    return selected
+
+
+def build_report_notification_text(report_url: str, selected_count: int) -> str:
+    return f"昨日 AI 科技新闻已更新，共 {selected_count} 条，请查阅：\n{report_url}"
+
+
+def write_report_meta(
+    meta_path: str | Path,
+    *,
+    target_date: str,
+    report_url: str,
+    selected_count: int,
+    total_count: int,
+    items,
+) -> Path:
+    path = Path(meta_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "target_date": target_date,
+        "report_url": report_url,
+        "selected_count": selected_count,
+        "total_count": total_count,
+        "items": [
+            {
+                "url": item.url,
+                "title": item.title,
+                "source": item.source,
+                "published_at": item.published_at,
+            }
+            for item in items
+            if item.url
+        ],
+    }
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def notify_from_meta(meta_path: str | Path, db_path: str | Path, webhook_url: str | None, send: bool) -> dict:
+    data = json.loads(Path(meta_path).read_text(encoding="utf-8"))
+    payload = build_feishu_text_payload(
+        build_report_notification_text(
+            report_url=data["report_url"],
+            selected_count=int(data.get("selected_count", 0)),
+        )
+    )
+    print(payload_to_json(payload))
+    if not send:
+        logger.info("Send status: skipped (dry run)")
+        return payload
+    if not webhook_url:
+        raise RuntimeError("FEISHU_WEBHOOK_URL is not set")
+    response_body = send_feishu_webhook(webhook_url, payload)
+    logger.info("Feishu webhook response: %s", response_body or "<empty>")
+    for item in data.get("items", []):
+        mark_sent_url(
+            db_path,
+            url=item.get("url", ""),
+            title=item.get("title", ""),
+            source=item.get("source", ""),
+            published_at=item.get("published_at", ""),
+        )
+    logger.info("Marked sent URLs: %d", len(data.get("items", [])))
+    logger.info("Send status: success")
+    return payload
 
 
 def main() -> int:
@@ -148,10 +214,16 @@ def main() -> int:
     parser.add_argument("--send", action="store_true", help="Send payload to Feishu webhook")
     parser.add_argument("--date", default=None, help="Target date in YYYY-MM-DD, defaults to yesterday")
     parser.add_argument("--test-feishu", action="store_true", help="Send a minimal Feishu text payload for webhook testing")
+    parser.add_argument("--write-meta", default=None, help="Write report notification metadata JSON")
+    parser.add_argument("--notify-meta", default=None, help="Send Feishu link notification from metadata JSON")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     app = load_app_config(sources_path=args.sources, db_path=args.db)
+    if args.notify_meta:
+        notify_from_meta(args.notify_meta, app.db_path, app.feishu_webhook_url, args.send)
+        return 0
+
     if args.test_feishu:
         payload = build_feishu_text_payload(f"{app.feishu_keyword}｜Feishu webhook test: bot is reachable.")
         print(payload_to_json(payload))
@@ -177,7 +249,7 @@ def main() -> int:
     )
     dated_items = filter_items_by_date(fetch_result.items, target_date)
     ranked_items = dedupe_by_title_similarity(dated_items, threshold=0.85)
-    unsent_items = filter_unsent(app.db_path, ranked_items)[: app.max_news_items]
+    unsent_items = select_balanced_items(filter_unsent(app.db_path, ranked_items), app.max_news_items)
     attach_article_images(
         unsent_items,
         timeout_seconds=app.fetch_timeout_seconds,
@@ -198,51 +270,43 @@ def main() -> int:
         logger.info("Source %s fetched %d items", source_name, count)
 
     enriched = [enrich_item(item, app.openai_api_key, app.openai_base_url, app.openai_model) for item in unsent_items]
-    for item in enriched:
-        item["tag"] = "海外" if item["source"].lower().startswith("google") or item["source"].lower().startswith("reuters") else "国内"
+    for item, original_item in zip(enriched, unsent_items):
+        item["tag"] = "海外" if is_overseas_item(original_item) else "国内"
         item["conclusion"] = item.get("summary", item["title"])[:80]
         if item.get("image_url"):
             item["cover"] = item["image_url"]
 
-    attach_feishu_image_keys(
+    generated_at = datetime.now(ZoneInfo(app.timezone)).strftime("%Y-%m-%d %H:%M %Z")
+    report_path = write_report(
         enriched,
-        app_id=app.feishu_app_id,
-        app_secret=app.feishu_app_secret,
-        max_uploads=app.max_image_uploads,
-        timeout_seconds=app.fetch_timeout_seconds,
-        user_agent=app.user_agent,
-    )
-
-    message_format = app.feishu_message_format
-    if any(item.get("image_key") for item in enriched):
-        message_format = "card"
-
-    payload = build_feishu_payload(
-        enriched,
-        title=f"昨日 AI 新闻简报｜{target_date}",
+        output_dir=app.report_output_dir,
+        target_date=target_date,
         total_count=len(fetch_result.items),
         selected_count=len(enriched),
-        message_format=message_format,
-        keyword=app.feishu_keyword,
+        generated_at=generated_at,
     )
+    report_url = f"{app.report_base_url}/{target_date}.html"
+    logger.info("Report path: %s", report_path)
+    logger.info("Report url: %s", report_url)
 
+    if args.write_meta:
+        meta_path = write_report_meta(
+            args.write_meta,
+            target_date=target_date,
+            report_url=report_url,
+            selected_count=len(enriched),
+            total_count=len(fetch_result.items),
+            items=unsent_items,
+        )
+        logger.info("Report metadata path: %s", meta_path)
+
+    payload = build_feishu_text_payload(build_report_notification_text(report_url, len(enriched)))
     print(payload_to_json(payload))
 
     if args.send:
         if not app.feishu_webhook_url:
             raise RuntimeError("FEISHU_WEBHOOK_URL is not set")
-        try:
-            response_body = send_feishu_webhook(app.feishu_webhook_url, payload)
-        except Exception as exc:
-            if not (is_keyword_validation_error(exc) or is_payload_validation_error(exc)):
-                raise
-            logger.warning("Feishu rich payload failed validation, falling back to text digest: %s", exc)
-            fallback_payload = build_feishu_text_digest_payload(
-                enriched,
-                title=f"昨日 AI 新闻简报｜{target_date}",
-                keyword=app.feishu_keyword,
-            )
-            response_body = send_feishu_webhook(app.feishu_webhook_url, fallback_payload)
+        response_body = send_feishu_webhook(app.feishu_webhook_url, payload)
         logger.info("Feishu webhook response: %s", response_body or "<empty>")
         for item in unsent_items:
             mark_sent(app.db_path, item)

@@ -3,43 +3,82 @@ sources:
     kind: rss
     language: en
     url: https://openai.com/news/rss.xml
-    priority: 100
+    priority: 120
     enabled: true
 
-  - name: 36氪 AI
-    kind: rss
-    language: zh
-    url: https://www.36kr.com/feed
-    priority: 90
-    enabled: true
-
-  - name: Google News AI
+  - name: Google News AI Global
     kind: google_news
     language: en
-    query: artificial intelligence
+    query: artificial intelligence OR generative AI OR large language model
     hl: en-US
     gl: US
     ceid: US:en
-    priority: 80
+    priority: 110
+    enabled: true
+
+  - name: Google News AI Companies
+    kind: google_news
+    language: en
+    query: OpenAI OR Anthropic OR Google DeepMind OR Meta AI OR Microsoft AI
+    hl: en-US
+    gl: US
+    ceid: US:en
+    priority: 105
+    enabled: true
+
+  - name: Google News AI Chips
+    kind: google_news
+    language: en
+    query: AI chips OR Nvidia OR GPU OR semiconductor artificial intelligence
+    hl: en-US
+    gl: US
+    ceid: US:en
+    priority: 95
     enabled: true
 
   - name: Google News 人工智能
     kind: google_news
     language: zh
-    query: 人工智能
+    query: 人工智能 OR 大模型 OR 生成式AI
+    hl: zh-CN
+    gl: CN
+    ceid: CN:zh-Hans
+    priority: 90
+    enabled: true
+
+  - name: Google News AI Regulation
+    kind: google_news
+    language: en
+    query: AI regulation OR AI safety OR artificial intelligence policy
+    hl: en-US
+    gl: US
+    ceid: US:en
+    priority: 85
+    enabled: true
+
+  - name: 36氪 科技
+    kind: rss
+    language: zh
+    url: https://www.36kr.com/feed
+    priority: 60
+    enabled: true
+
+  - name: Google News 中国科技
+    kind: google_news
+    language: zh
+    query: 科技 公司 AI OR 芯片 OR 机器人 OR 自动驾驶
     hl: zh-CN
     gl: CN
     ceid: CN:zh-Hans
     priority: 70
     enabled: true
 
-  - name: Google News AI Startup
+  - name: Google News Tech Major
     kind: google_news
     language: en
-    query: AI startup OR artificial intelligence startup
+    query: major technology news AI OR chips OR robotics OR cloud
     hl: en-US
     gl: US
     ceid: US:en
-    priority: 60
+    priority: 55
     enabled: true
-

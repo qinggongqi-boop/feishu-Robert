@@ -19,6 +19,12 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
 
 jobs:
   daily-news:
@@ -47,26 +53,68 @@ jobs:
           restore-keys: |
             sent-urls-${{ runner.os }}-
 
-      - name: Run daily news job
+      - name: Restore report pages
+        uses: actions/cache@v4
+        with:
+          path: docs
+          key: report-pages-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            report-pages-${{ runner.os }}-
+
+      - name: Generate daily news report
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
-          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           FEISHU_KEYWORD: ${{ secrets.FEISHU_KEYWORD }}
           APP_TIMEZONE: Asia/Shanghai
-          FEISHU_MESSAGE_FORMAT: post
           MAX_NEWS_ITEMS: "15"
+          REPORT_BASE_URL: https://qinggongqi-boop.github.io/feishu-Robert
+          REPORT_OUTPUT_DIR: docs
         run: |
           set -o pipefail
           mkdir -p logs
           if [ "${{ github.event.inputs.test_feishu || 'false' }}" = "true" ]; then
-            python main.py --test-feishu --send 2>&1 | tee logs/daily_news.log
+            python main.py --test-feishu 2>&1 | tee logs/daily_news.log
           else
-            python main.py --send 2>&1 | tee logs/daily_news.log
+            python main.py --write-meta logs/report_meta.json 2>&1 | tee logs/daily_news.log
           fi
+
+      - name: Configure GitHub Pages
+        if: ${{ github.event.inputs.test_feishu != 'true' }}
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: ${{ github.event.inputs.test_feishu != 'true' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy GitHub Pages
+        if: ${{ github.event.inputs.test_feishu != 'true' }}
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Send Feishu link notification
+        if: ${{ github.event.inputs.test_feishu != 'true' }}
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          APP_TIMEZONE: Asia/Shanghai
+          REPORT_BASE_URL: https://qinggongqi-boop.github.io/feishu-Robert
+          REPORT_OUTPUT_DIR: docs
+        run: |
+          set -o pipefail
+          python main.py --notify-meta logs/report_meta.json --send 2>&1 | tee -a logs/daily_news.log
+
+      - name: Send Feishu webhook test
+        if: ${{ github.event.inputs.test_feishu == 'true' }}
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_KEYWORD: ${{ secrets.FEISHU_KEYWORD }}
+        run: |
+          set -o pipefail
+          python main.py --test-feishu --send 2>&1 | tee -a logs/daily_news.log
 
       - name: Upload run logs
         if: always()

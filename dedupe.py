@@ -37,15 +37,25 @@ def has_sent(db_path: str | Path, url: str) -> bool:
 
 
 def mark_sent(db_path: str | Path, item: NewsItem) -> None:
+    mark_sent_url(
+        db_path,
+        url=item.url,
+        title=item.title,
+        source=item.source,
+        published_at=item.published_at,
+    )
+
+
+def mark_sent_url(db_path: str | Path, url: str, title: str = "", source: str = "", published_at: str = "") -> None:
     init_db(db_path)
-    url = canonicalize_url(item.url)
+    normalized_url = canonicalize_url(url)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
             INSERT OR IGNORE INTO sent_urls (url, title, source, published_at)
             VALUES (?, ?, ?, ?)
             """,
-            (url, item.title, item.source, item.published_at),
+            (normalized_url, title, source, published_at),
         )
         conn.commit()
 

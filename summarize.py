@@ -14,12 +14,14 @@ def summarize_to_zh(
     if not source_text:
         return ""
     if not api_key:
-        return description[:120].strip() or title[:120].strip()
+        return (description or title)[:300].strip()
 
     prompt = (
-        "请基于下面的新闻标题和摘要，生成一条中文摘要。"
-        "要求：1）控制在 1 到 2 句话；2）保留关键事实、公司名、产品名；"
-        "3）表达自然简洁；4）不要加前缀说明。\n\n"
+        "请基于下面的新闻标题和摘要，生成一段中文新闻概述。"
+        "要求：1）控制在 200 到 300 个中文字符左右，不要机械凑字数；"
+        "2）保留关键事实、公司名、产品名、影响和背景；"
+        "3）如果原文信息有限，可以自然说明这条新闻值得关注的原因；"
+        "4）表达像中文科技媒体编辑，不要加“摘要：”等前缀。\n\n"
         f"{source_text}"
     )
     return _call_openai_chat(

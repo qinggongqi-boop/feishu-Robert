@@ -17,3 +17,5 @@ def test_app_config_defaults_to_post_and_15_items(monkeypatch):
     assert app.feishu_app_id is None
     assert app.feishu_app_secret is None
     assert app.max_image_uploads == 5
+    assert app.report_base_url == "https://qinggongqi-boop.github.io/feishu-Robert"
+    assert app.report_output_dir.name == "docs"

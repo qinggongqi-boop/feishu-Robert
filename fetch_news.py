@@ -250,11 +250,14 @@ def fetch_source_news(
             continue
         article_url = _entry_url(entry)
         image_url = _entry_image_url(entry)
+        source_name = source.name
+        if source.kind == "google_news" and isinstance(entry.get("source"), dict):
+            source_name = str(entry["source"].get("title") or source.name).strip()
         items.append(
             NewsItem(
                 title=str(entry.get("title", "")).strip(),
                 url=article_url,
-                source=source.name,
+                source=source_name,
                 language=source.language,
                 source_priority=source.priority,
                 image_url=image_url,
