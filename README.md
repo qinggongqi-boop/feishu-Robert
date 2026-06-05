@@ -36,7 +36,7 @@ https://qinggongqi-boop.github.io/feishu-Robert/YYYY-MM-DD.html
 
 - `main.py`：主入口，负责抓取、筛选、翻译、摘要、生成报告、发送飞书通知
 - `fetch_news.py`：RSS / Google News RSS 抓取、日期过滤、标题相似去重、图片抓取
-- `translate.py`：OpenAI 兼容接口翻译
+- `translate.py`：Azure Translator 优先翻译，Google 免费接口兜底，OpenAI 兼容接口可选
 - `summarize.py`：中文概述生成
 - `report.py`：GitHub Pages HTML 报告生成
 - `feishu.py`：飞书 webhook payload 构建和发送
@@ -91,12 +91,33 @@ python main.py --test-feishu --send
 - `OPENAI_API_KEY`：OpenAI 或兼容服务 API Key
 - `OPENAI_BASE_URL`：OpenAI 兼容接口地址，例如 `https://codexx.dns.army/v1`
 - `OPENAI_MODEL`：模型名，例如 `gpt5.4-mini`
+- `AZURE_TRANSLATOR_KEY`：Azure AI Translator 的 Key
+- `AZURE_TRANSLATOR_REGION`：Azure AI Translator 资源所在区域，例如 `eastasia`、`southeastasia`
 
 可选：
 
 - `FEISHU_KEYWORD`：如果飞书机器人开启了关键词校验，可以设置关键词
 
 不要把任何 key 写入代码或提交到公开仓库。
+
+## Azure Translator
+
+推荐使用 Azure Translator 做英文标题和正文翻译，稳定性通常比免费无 key 接口更好。
+
+配置步骤：
+
+1. 进入 Azure Portal，创建 `Translator` 或 `Azure AI services` 翻译资源。
+2. 定价层选择免费层 `F0`，如果账号和区域支持的话。
+3. 在资源页面的 `Keys and Endpoint` 中复制一个 Key。
+4. 记录资源的 Region，例如 `eastasia` 或 `southeastasia`。
+5. 在 GitHub 仓库 `Settings -> Secrets and variables -> Actions` 中新增 `AZURE_TRANSLATOR_KEY` 和 `AZURE_TRANSLATOR_REGION`。
+
+运行时策略：
+
+1. 有 Azure Secrets 时，优先使用 Azure Translator。
+2. Azure 未配置或请求失败时，自动降级到 Google 免费翻译接口。
+3. OpenAI 兼容接口主要用于摘要润色；失败时会用稳定翻译加本地模板生成中文概述。
+4. 如果标题或摘要翻译后仍明显是英文、乱码或内容过短，会跳过该条新闻，避免推送低质量内容。
 
 ## GitHub Pages
 

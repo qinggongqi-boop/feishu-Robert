@@ -27,12 +27,14 @@ from feishu import (
 )
 from report import write_report
 from summarize import summarize_to_zh
-from translate import translate_to_zh_fallback, translate_to_zh_with_base_url
+from translate import translate_to_zh_stable, translate_to_zh_with_base_url
 
 
 logger = logging.getLogger(__name__)
 DOMESTIC_MIN_ITEMS = 4
 OVERSEAS_MIN_ITEMS = 6
+QUALITY_CANDIDATE_MULTIPLIER = 3
+MOJIBAKE_CHARS = set("�ÃÂåæçðø¢£¤¥¦§¨©ª«¬®¯°±²³´µ¶·¸¹º¼½¾¿ÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß")
 
 
 def looks_mostly_english(text: str) -> bool:
@@ -41,6 +43,39 @@ def looks_mostly_english(text: str) -> bool:
         return False
     ascii_letters = [char for char in letters if char.isascii()]
     return len(ascii_letters) / len(letters) > 0.72
+
+
+def looks_mojibake(text: str) -> bool:
+    clean_text = text or ""
+    if not clean_text.strip():
+        return False
+    if "?" * 8 in clean_text:
+        return True
+    visible_chars = [char for char in clean_text if not char.isspace()]
+    if not visible_chars:
+        return False
+    mojibake_count = sum(1 for char in visible_chars if char in MOJIBAKE_CHARS)
+    if mojibake_count >= 6 and mojibake_count / len(visible_chars) > 0.06:
+        return True
+    odd_sequences = re.findall(r"(?:å|æ|ç|Ã|Â|Ð|Ø|º|¼|½|¾|®|¶|¥).{0,3}", clean_text)
+    return len(odd_sequences) >= 5
+
+
+def is_content_quality_ok(title: str, summary: str, original_title: str = "") -> bool:
+    if looks_mojibake(title) or looks_mojibake(summary):
+        return False
+    if looks_mostly_english(title):
+        return False
+    if len("".join(summary.split())) < 120:
+        return False
+    if original_title and title.strip() == original_title.strip() and looks_mostly_english(original_title):
+        return False
+    return True
+
+
+def is_raw_item_quality_ok(item) -> bool:
+    raw_text = " ".join([item.title or "", item.summary or "", item.raw_summary or ""])
+    return not looks_mojibake(raw_text)
 
 
 TERM_TRANSLATIONS = [
@@ -74,6 +109,11 @@ TERM_TRANSLATIONS = [
     (r"\bstartups\b", "创业公司"),
     (r"\bCEO\b", "CEO"),
     (r"\bAGI\b", "通用人工智能"),
+    (r"\bASI\b", "超级人工智能"),
+    (r"\bSoftBank\b", "软银"),
+    (r"\bMasayoshi Son\b", "孙正义"),
+    (r"\bSon\b", "孙正义"),
+    (r"\bOpenAI's\b", "OpenAI 的"),
 ]
 
 
@@ -82,7 +122,35 @@ def strip_source_suffix(title: str) -> str:
 
 
 def strip_chinese_source_suffix(title: str) -> str:
-    return re.sub(r"\s*[-－]\s*[^-－]{2,24}$", "", title).strip()
+    stripped = re.sub(r"\s*[-－]\s*[^-－]{2,24}$", "", title).strip()
+    return re.sub(r"\s*[·•]\s*[^·•]{2,40}$", "", stripped).strip()
+
+
+def review_chinese_translation(text: str, original_text: str = "") -> str:
+    reviewed = " ".join((text or "").split())
+    original = original_text or ""
+    if re.search(r"\b(Masayoshi Son|SoftBank|Son Revises|Son says|Son claimed)\b", original, flags=re.IGNORECASE):
+        reviewed = reviewed.replace("儿子", "孙正义")
+        reviewed = reviewed.replace("儿子修", "孙正义修")
+        reviewed = reviewed.replace("孙正义子", "孙正义")
+    replacements = {
+        "代理人工智能": "智能体 AI",
+        "代理 AI": "智能体 AI",
+        "生成人工智能": "生成式 AI",
+        "人工智能模型": "AI 模型",
+        "人工智能芯片": "AI 芯片",
+        "超级人工智能时间表": "ASI 时间表",
+        "软银 的孙正义": "软银孙正义",
+        "OpenAI 的模型": "OpenAI 模型",
+        "Google 放弃": "Google 发布",
+        "谷歌放弃": "谷歌发布",
+        "谷歌 放弃": "谷歌发布",
+        "人工智能综述": "AI 月度综述",
+    }
+    for bad, good in replacements.items():
+        reviewed = reviewed.replace(bad, good)
+    reviewed = re.sub(r"\s+", " ", reviewed).strip()
+    return reviewed
 
 
 def apply_term_glossary(text: str) -> str:
@@ -91,7 +159,7 @@ def apply_term_glossary(text: str) -> str:
         result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
     result = result.replace("’s", " 的").replace("'s", " 的")
     result = result.replace("“", "「").replace("”", "」")
-    return " ".join(result.split())
+    return review_chinese_translation(" ".join(result.split()), text)
 
 
 def heuristic_english_title_to_zh(title: str) -> str:
@@ -124,20 +192,31 @@ def yesterday_in_tz(tz_name: str) -> str:
     return yesterday.date().isoformat()
 
 
-def chinese_fallback_title(title: str) -> str:
-    translated = translate_to_zh_fallback(title)
+def chinese_fallback_title(
+    title: str,
+    azure_translator_key: str | None = None,
+    azure_translator_region: str | None = None,
+) -> str:
+    translated = translate_to_zh_stable(title, azure_translator_key, azure_translator_region)
     if translated and translated != title:
-        return strip_chinese_source_suffix(translated)
-    return heuristic_english_title_to_zh(title)
+        return review_chinese_translation(strip_chinese_source_suffix(translated), title)
+    return review_chinese_translation(heuristic_english_title_to_zh(title), title)
 
 
-def chinese_fallback_summary(summary: str, title: str, source: str) -> str:
+def chinese_fallback_summary(
+    summary: str,
+    title: str,
+    source: str,
+    azure_translator_key: str | None = None,
+    azure_translator_region: str | None = None,
+) -> str:
     source_text = " ".join((summary or title).split())
     if not source_text:
         return f"这篇来自 {source} 的报道涉及 AI 或科技行业的重要动态，建议结合原文进一步查看事件细节、相关公司表态以及后续影响。"
-    translated = translate_to_zh_fallback(source_text)
+    translated = translate_to_zh_stable(source_text, azure_translator_key, azure_translator_region)
     clean_text = translated if translated and translated != source_text else apply_term_glossary(source_text)
     clean_text = clean_summary_material(clean_text)
+    clean_text = review_chinese_translation(clean_text, source_text)
     clean_text = clean_text.rstrip("。；;,.，")
     base = (
         f"据 {source} 报道，{clean_text}。"
@@ -164,14 +243,33 @@ def clean_summary_material(text: str) -> str:
     for pattern in noise_patterns:
         cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(r"[?？]{4,}", " ", cleaned)
+    cleaned = re.sub(r"©\s*\d{4}.*?版权所有。?", " ", cleaned)
+    cleaned = re.sub(r"直播电视|政治 土耳其|信息图专题|时事通讯|文章 时事通讯", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
 
-def polish_summary(summary: str, source_text: str, title: str, source: str, force_fallback: bool = False) -> str:
+def polish_summary(
+    summary: str,
+    source_text: str,
+    title: str,
+    source: str,
+    force_fallback: bool = False,
+    azure_translator_key: str | None = None,
+    azure_translator_region: str | None = None,
+) -> str:
     clean_summary = " ".join((summary or "").split())
-    if force_fallback or looks_mostly_english(clean_summary):
-        clean_summary = chinese_fallback_summary(source_text, title, source)
+    if force_fallback or looks_mostly_english(clean_summary) or looks_mojibake(clean_summary):
+        clean_summary = chinese_fallback_summary(
+            source_text,
+            title,
+            source,
+            azure_translator_key=azure_translator_key,
+            azure_translator_region=azure_translator_region,
+        )
     clean_summary = clean_summary_material(clean_summary)
+    clean_summary = review_chinese_translation(clean_summary, source_text)
     if len(clean_summary) < 180:
         clean_summary = (
             f"{clean_summary} "
@@ -198,21 +296,36 @@ def build_summary_source(item, metadata: ArticleMetadata | None) -> str:
     return "\n".join(clean_parts)[:2200]
 
 
-def enrich_item(item, openai_api_key: str | None, openai_base_url: str, openai_model: str, metadata: ArticleMetadata | None = None) -> dict[str, str]:
+def enrich_item(
+    item,
+    openai_api_key: str | None,
+    openai_base_url: str,
+    openai_model: str,
+    metadata: ArticleMetadata | None = None,
+    azure_translator_key: str | None = None,
+    azure_translator_region: str | None = None,
+) -> dict[str, str]:
     original_title = (metadata.title if metadata and metadata.title else item.raw_title or item.title).strip()
     title_cn = original_title
     summary_source = build_summary_source(item, metadata)
     summary_cn = summary_source or item.summary
-    title_translated = False
     if item.language.lower().startswith("en"):
+        title_cn = translate_to_zh_stable(original_title, azure_translator_key, azure_translator_region)
+        title_translated = title_cn != original_title and not looks_mostly_english(title_cn)
         try:
-            title_cn = translate_to_zh_with_base_url(original_title, openai_api_key, base_url=openai_base_url, model=openai_model)
-            title_translated = title_cn != original_title
+            if not title_translated:
+                title_cn = translate_to_zh_with_base_url(
+                    original_title,
+                    openai_api_key,
+                    base_url=openai_base_url,
+                    model=openai_model,
+                )
+                title_translated = title_cn != original_title and not looks_mostly_english(title_cn)
         except Exception as exc:
             logger.warning("Title translation failed for %s: %s", item.url, exc)
-            title_cn = chinese_fallback_title(original_title)
-        if not title_translated and title_cn == original_title:
-            title_cn = chinese_fallback_title(original_title)
+        if not title_translated:
+            title_cn = chinese_fallback_title(original_title, azure_translator_key, azure_translator_region)
+        title_cn = review_chinese_translation(strip_chinese_source_suffix(title_cn), original_title)
     try:
         summary_cn = summarize_to_zh(
             title_cn,
@@ -223,14 +336,39 @@ def enrich_item(item, openai_api_key: str | None, openai_base_url: str, openai_m
         )
     except Exception as exc:
         logger.warning("Summary generation failed for %s: %s", item.url, exc)
-        summary_cn = chinese_fallback_summary(summary_source, title_cn or original_title, item.source)
+        summary_cn = chinese_fallback_summary(
+            summary_source,
+            title_cn or original_title,
+            item.source,
+            azure_translator_key=azure_translator_key,
+            azure_translator_region=azure_translator_region,
+        )
     summary_cn = polish_summary(
         summary_cn,
         source_text=summary_source,
         title=title_cn or original_title,
         source=item.source,
         force_fallback=item.language.lower().startswith("en") and looks_mostly_english(summary_cn),
+        azure_translator_key=azure_translator_key,
+        azure_translator_region=azure_translator_region,
     )
+    if item.language.lower().startswith("en") and looks_mostly_english(summary_cn):
+        translated_source = translate_to_zh_stable(summary_source, azure_translator_key, azure_translator_region)
+        summary_cn = polish_summary(
+            chinese_fallback_summary(
+                translated_source,
+                title_cn or original_title,
+                item.source,
+                azure_translator_key=azure_translator_key,
+                azure_translator_region=azure_translator_region,
+            ),
+            source_text=translated_source,
+            title=title_cn or original_title,
+            source=item.source,
+            force_fallback=False,
+            azure_translator_key=azure_translator_key,
+            azure_translator_region=azure_translator_region,
+        )
 
     return {
         "title": title_cn or item.title,
@@ -273,6 +411,16 @@ def attach_article_metadata(items, timeout_seconds: int, retries: int, user_agen
         else:
             item.image_url = ""
     return metadata_by_url
+
+
+def attach_single_article_metadata(item, timeout_seconds: int, retries: int, user_agent: str) -> ArticleMetadata:
+    metadata_by_url = attach_article_metadata(
+        [item],
+        timeout_seconds=timeout_seconds,
+        retries=retries,
+        user_agent=user_agent,
+    )
+    return metadata_by_url.get(item.url, ArticleMetadata())
 
 
 def is_overseas_item(item) -> bool:
@@ -414,18 +562,18 @@ def main() -> int:
     )
     dated_items = filter_items_by_date(fetch_result.items, target_date)
     ranked_items = dedupe_by_title_similarity(dated_items, threshold=0.85)
-    unsent_items = select_balanced_items(filter_unsent(app.db_path, ranked_items), app.max_news_items)
-    metadata_by_url = attach_article_metadata(
-        unsent_items,
-        timeout_seconds=app.fetch_timeout_seconds,
-        retries=1,
-        user_agent=app.user_agent,
+    raw_unsent_items = filter_unsent(app.db_path, ranked_items)
+    quality_raw_items = [item for item in raw_unsent_items if is_raw_item_quality_ok(item)]
+    candidate_items = select_balanced_items(
+        quality_raw_items,
+        app.max_news_items * QUALITY_CANDIDATE_MULTIPLIER,
     )
-
     logger.info("Fetched %d items from %d sources", len(fetch_result.items), len(sources))
     logger.info("After date filter (%s): %d items", target_date, len(dated_items))
     logger.info("After title dedupe: %d items", len(ranked_items))
-    logger.info("Selected for sending: %d items", len(unsent_items))
+    logger.info("After URL dedupe: %d items", len(raw_unsent_items))
+    logger.info("After raw quality filter: %d items", len(quality_raw_items))
+    logger.info("Selected candidates: %d items", len(candidate_items))
     logger.info("Max news items: %d", app.max_news_items)
     if fetch_result.failed_sources:
         logger.warning("Failed sources: %s", ", ".join(fetch_result.failed_sources))
@@ -434,16 +582,37 @@ def main() -> int:
     for source_name, count in fetch_result.per_source_counts.items():
         logger.info("Source %s fetched %d items", source_name, count)
 
-    enriched = [
-        enrich_item(
+    enriched = []
+    unsent_items = []
+    for item in candidate_items:
+        metadata = attach_single_article_metadata(
+            item,
+            timeout_seconds=min(app.fetch_timeout_seconds, 10),
+            retries=1,
+            user_agent=app.user_agent,
+        )
+        enriched_item = enrich_item(
             item,
             app.openai_api_key,
             app.openai_base_url,
             app.openai_model,
-            metadata=metadata_by_url.get(item.url),
+            metadata=metadata,
+            azure_translator_key=app.azure_translator_key,
+            azure_translator_region=app.azure_translator_region,
         )
-        for item in unsent_items
-    ]
+        if not is_content_quality_ok(
+            enriched_item.get("title", ""),
+            enriched_item.get("summary", ""),
+            enriched_item.get("original_title", ""),
+        ):
+            logger.info("Skipped low-quality item after translation review: %s", item.url)
+            continue
+        enriched.append(enriched_item)
+        unsent_items.append(item)
+        if len(enriched) >= app.max_news_items:
+            break
+    logger.info("Selected after quality review: %d items", len(enriched))
+
     for item, original_item in zip(enriched, unsent_items):
         item["tag"] = "海外" if is_overseas_item(original_item) else "国内"
         item["conclusion"] = item.get("summary", item["title"])[:80]

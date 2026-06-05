@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from urllib import request, error
+from uuid import uuid4
 
 import requests
 
@@ -101,3 +102,46 @@ def translate_to_zh_fallback(text: str) -> str:
     except (KeyError, IndexError, TypeError):
         return source_text
     return translated.strip() or source_text
+
+
+def translate_to_zh_azure(
+    text: str,
+    key: str | None,
+    region: str | None,
+    endpoint: str = "https://api.cognitive.microsofttranslator.com",
+) -> str:
+    source_text = text.strip()
+    if not source_text:
+        return ""
+    if not key or not region:
+        return source_text
+    try:
+        response = requests.post(
+            endpoint.rstrip("/") + "/translate",
+            params={"api-version": "3.0", "to": "zh-Hans"},
+            headers={
+                "Ocp-Apim-Subscription-Key": key,
+                "Ocp-Apim-Subscription-Region": region,
+                "Content-Type": "application/json",
+                "X-ClientTraceId": str(uuid4()),
+            },
+            json=[{"text": source_text}],
+            timeout=20,
+        )
+        response.raise_for_status()
+        body = response.json()
+        translated = body[0]["translations"][0]["text"]
+    except Exception:
+        return source_text
+    return translated.strip() or source_text
+
+
+def translate_to_zh_stable(text: str, azure_key: str | None = None, azure_region: str | None = None) -> str:
+    """Translate with Azure first, then fall back to Google's no-key endpoint."""
+    source_text = text.strip()
+    if not source_text:
+        return ""
+    translated = translate_to_zh_azure(source_text, key=azure_key, region=azure_region)
+    if translated and translated != source_text:
+        return translated
+    return translate_to_zh_fallback(source_text)

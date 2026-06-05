@@ -36,6 +36,8 @@ class AppConfig:
     openai_api_key: str | None
     openai_base_url: str
     openai_model: str
+    azure_translator_key: str | None
+    azure_translator_region: str | None
     feishu_message_format: str
     feishu_keyword: str
     max_news_items: int
@@ -97,6 +99,8 @@ def load_app_config(
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+        azure_translator_key=os.getenv("AZURE_TRANSLATOR_KEY"),
+        azure_translator_region=os.getenv("AZURE_TRANSLATOR_REGION"),
         feishu_message_format=os.getenv("FEISHU_MESSAGE_FORMAT", "post"),
         feishu_keyword=os.getenv("FEISHU_KEYWORD") or DEFAULT_FEISHU_KEYWORD,
         max_news_items=int(os.getenv("MAX_NEWS_ITEMS", "15")),
