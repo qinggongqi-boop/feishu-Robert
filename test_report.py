@@ -13,6 +13,7 @@ def test_report_html_contains_news_fields_and_images():
                 "source": "Google News AI Global",
                 "url": "https://example.com/article",
                 "tag": "海外",
+                "summary_source": "模型摘要",
                 "image_urls": ["https://example.com/cover-1.jpg", "https://example.com/cover-2.jpg"],
             }
         ],
@@ -26,6 +27,7 @@ def test_report_html_contains_news_fields_and_images():
     assert "中文主标题" in html
     assert "Original English Title" in html
     assert "Google News AI Global" in html
+    assert "模型摘要" in html
     assert "https://example.com/article" in html
     assert "https://example.com/cover-1.jpg" in html
     assert "https://example.com/cover-2.jpg" in html
@@ -47,6 +49,7 @@ def test_report_html_has_mobile_overflow_guards_and_keeps_long_summary():
                 "source": "Google News AI Global",
                 "url": "https://example.com/article",
                 "tag": "海外",
+                "summary_source": "本地回退",
                 "image_urls": [],
             }
         ],
@@ -61,6 +64,7 @@ def test_report_html_has_mobile_overflow_guards_and_keeps_long_summary():
     assert "minmax(0, 1fr)" in html
     assert "overflow-wrap: anywhere" in html
     assert "@media (max-width: 420px)" in html
+    assert "本地回退" in html
 
 
 def test_write_report_generates_latest_index_redirect(tmp_path):

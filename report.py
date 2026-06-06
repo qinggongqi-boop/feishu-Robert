@@ -58,6 +58,7 @@ def _article_html(item: dict[str, str], index: int) -> str:
     original_title = escape(item.get("original_title") or item.get("raw_title") or item.get("title", ""))
     source = escape(item.get("source", "未知来源"))
     tag = escape(item.get("tag", "新闻"))
+    summary_source = escape(item.get("summary_source", "本地回退"))
     url = escape(item.get("url", ""))
     summary = escape(_truncate_summary(item.get("summary", "")))
     original_title_html = f'<p class="original-title">{original_title}</p>' if original_title and original_title != title else ""
@@ -75,6 +76,7 @@ def _article_html(item: dict[str, str], index: int) -> str:
         <div class="meta">
           <span class="tag">{tag}</span>
           <span>{source}</span>
+          <span class="summary-source">{summary_source}</span>
         </div>
         <h2>{title}</h2>
         {original_title_html}
@@ -280,6 +282,12 @@ def build_report_html(
     .tag {{
       color: var(--accent);
       background: rgba(15, 118, 110, 0.1);
+      padding: 4px 9px;
+      border-radius: 999px;
+    }}
+    .summary-source {{
+      color: #92400e;
+      background: rgba(245, 158, 11, 0.13);
       padding: 4px 9px;
       border-radius: 999px;
     }}

@@ -671,6 +671,7 @@ def enrich_item(
         volcengine_secret_access_key=volcengine_secret_access_key,
         volcengine_region=volcengine_region,
     )
+    summary_source_label = "本地回退"
     if openai_api_key and openai_summary_enabled:
         local_summary = summary_cn
         try:
@@ -680,10 +681,12 @@ def enrich_item(
                 openai_api_key,
                 base_url=openai_base_url,
                 model=openai_model,
+                retries=1,
             )
             model_summary = postprocess_chinese_text(model_summary, summary_source)
-            if is_summary_explanatory(model_summary, min_chars=100):
+            if is_summary_explanatory(f"{title_cn}。{model_summary}", min_chars=100):
                 summary_cn = model_summary
+                summary_source_label = "模型摘要"
             else:
                 logger.info("Model summary failed quality gate for %s; using local summary", item.url)
                 summary_cn = local_summary
@@ -734,9 +737,53 @@ def enrich_item(
         "source": item.source,
         "published_at": item.published_at,
         "summary": summary_cn or chinese_fallback_summary(summary_source, title_cn or original_title, item.source),
+        "summary_material": summary_source,
+        "summary_source": summary_source_label,
         "image_url": item.image_url,
         "image_urls": [item.image_url] if item.image_url else [],
     }
+
+
+def enhance_final_summaries_with_model(
+    items: list[dict[str, str]],
+    *,
+    openai_api_key: str | None,
+    openai_base_url: str,
+    openai_summary_model: str,
+) -> None:
+    if not openai_api_key:
+        logger.info("Model summary enhancement skipped: OPENAI_API_KEY is not set")
+        return
+
+    model_count = 0
+    fallback_count = 0
+    for item in items:
+        local_summary = item.get("summary", "")
+        material = item.get("summary_material") or local_summary
+        title = item.get("title") or item.get("original_title") or ""
+        try:
+            model_summary = summarize_to_zh(
+                title,
+                material,
+                openai_api_key,
+                base_url=openai_base_url,
+                model=openai_summary_model,
+                retries=1,
+            )
+            model_summary = postprocess_chinese_text(model_summary, material)
+            if is_summary_explanatory(f"{title}。{model_summary}", min_chars=100):
+                item["summary"] = model_summary
+                item["summary_source"] = "模型摘要"
+                model_count += 1
+                continue
+            logger.info("Model summary failed quality gate for %s; using local summary", item.get("url", ""))
+        except Exception as exc:
+            logger.warning("Summary generation failed for %s: %s", item.get("url", ""), exc)
+        item["summary"] = local_summary
+        item["summary_source"] = "本地回退"
+        fallback_count += 1
+
+    logger.info("Model summaries used: %d; local fallback summaries: %d", model_count, fallback_count)
 
 
 def attach_article_metadata(items, timeout_seconds: int, retries: int, user_agent: str) -> dict[str, ArticleMetadata]:
@@ -1017,7 +1064,7 @@ def main() -> int:
             volcengine_access_key_id=app.volcengine_access_key_id,
             volcengine_secret_access_key=app.volcengine_secret_access_key,
             volcengine_region=app.volcengine_region,
-            openai_summary_enabled=app.openai_summary_enabled,
+            openai_summary_enabled=False,
         )
         if not is_content_quality_ok(
             enriched_item.get("title", ""),
@@ -1032,6 +1079,16 @@ def main() -> int:
         if len(enriched) >= app.max_news_items:
             break
     logger.info("Selected after quality review: %d items", len(enriched))
+
+    if app.openai_summary_enabled:
+        enhance_final_summaries_with_model(
+            enriched,
+            openai_api_key=app.openai_api_key,
+            openai_base_url=app.openai_base_url,
+            openai_summary_model=app.openai_summary_model,
+        )
+    else:
+        logger.info("Model summary enhancement skipped: OPENAI_SUMMARY_ENABLED is false")
 
     for item, original_item in zip(enriched, unsent_items):
         item["tag"] = "海外" if is_overseas_item(original_item) else "国内"

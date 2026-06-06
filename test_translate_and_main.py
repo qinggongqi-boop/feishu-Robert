@@ -5,6 +5,7 @@ from fetch_news import NewsItem
 from main import (
     compact_editorial_summary,
     enrich_item,
+    enhance_final_summaries_with_model,
     is_content_quality_ok,
     is_raw_item_quality_ok,
     looks_mojibake,
@@ -33,7 +34,7 @@ def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
         calls["openai_translate"].append((text, api_key, model))
         return f"OpenAI 中文：{text}"
 
-    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini"):
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
         calls["summarize"].append((title, description, api_key, model))
         return (
             "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。"
@@ -159,7 +160,7 @@ def test_model_summary_is_used_when_quality_gate_passes(monkeypatch):
             "这意味着团队可以把模型用于代码生成、数据分析和复杂任务拆解。"
         )
 
-    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini"):
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
         return (
             "OpenAI 发布新的推理模型，重点提升代码、数学和规划任务的稳定性，并通过 API 面向开发者和企业客户开放。"
             "这会影响团队构建客服自动化、数据分析和内部知识库等 AI 应用的方式，也会加快同类模型在性能、价格和安全策略上的竞争。"
@@ -254,6 +255,67 @@ def test_model_summary_falls_back_when_too_vague(monkeypatch):
 
     assert "意义重大，值得持续关注" not in enriched["summary"]
     assert "代码生成、数据分析和复杂任务拆解" in enriched["summary"]
+
+
+def test_final_summary_enhancement_uses_model_for_selected_items_only(monkeypatch):
+    calls = []
+
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
+        calls.append((title, api_key, base_url, model, retries))
+        return (
+            "OpenAI 发布新的推理模型，重点提升代码、数学和规划任务的稳定性，并通过 API 面向开发者和企业客户开放。"
+            "这会影响团队构建客服自动化、数据分析和内部知识库等 AI 应用的方式，也会加快同类模型在性能、价格和安全策略上的竞争。"
+            "后续需要观察实际延迟、成本和企业落地效果。"
+        )
+
+    monkeypatch.setattr("main.summarize_to_zh", fake_summarize)
+    items = [
+        {
+            "title": "OpenAI 发布新模型",
+            "summary": "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。",
+            "summary_material": "OpenAI says the release is designed for production use cases and enterprise teams.",
+            "summary_source": "本地回退",
+            "url": "https://example.com/model",
+        }
+    ]
+
+    enhance_final_summaries_with_model(
+        items,
+        openai_api_key="test-key",
+        openai_base_url="https://api.example.com/v1",
+        openai_summary_model="gpt-4.1-mini",
+    )
+
+    assert len(calls) == 1
+    assert calls[0] == ("OpenAI 发布新模型", "test-key", "https://api.example.com/v1", "gpt-4.1-mini", 1)
+    assert items[0]["summary_source"] == "模型摘要"
+    assert "通过 API 面向开发者和企业客户开放" in items[0]["summary"]
+
+
+def test_final_summary_enhancement_marks_local_fallback_when_model_fails(monkeypatch):
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
+        raise RuntimeError("OpenAI request failed with HTTP 503")
+
+    monkeypatch.setattr("main.summarize_to_zh", fake_summarize)
+    items = [
+        {
+            "title": "OpenAI 发布新模型",
+            "summary": "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。",
+            "summary_material": "OpenAI says the release is designed for production use cases and enterprise teams.",
+            "summary_source": "本地回退",
+            "url": "https://example.com/model",
+        }
+    ]
+
+    enhance_final_summaries_with_model(
+        items,
+        openai_api_key="test-key",
+        openai_base_url="https://api.example.com/v1",
+        openai_summary_model="gpt-4.1-mini",
+    )
+
+    assert items[0]["summary_source"] == "本地回退"
+    assert items[0]["summary"] == "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。"
 
 
 def test_noise_source_and_summary_are_rejected():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 
 from translate import _call_openai_chat
 
@@ -22,6 +23,7 @@ def summarize_to_zh(
     api_key: str | None,
     base_url: str = "https://api.openai.com/v1",
     model: str = "gpt-4.1-mini",
+    retries: int = 1,
 ) -> str:
     source_text = "\n".join(part for part in [title.strip(), description.strip()] if part)
     if not source_text:
@@ -43,14 +45,25 @@ def summarize_to_zh(
         "8）如果公开信息不足，要明确写“目前公开信息有限”，不要编造事实。\n\n"
         f"{source_text}"
     )
-    return clean_model_summary(_call_openai_chat(
-        api_key=api_key,
-        base_url=base_url,
-        model=model,
-        system_prompt=(
-            "You are a careful Chinese technology news editor. "
-            "Write clear, factual, information-dense Chinese summaries. "
-            "Do not invent facts."
-        ),
-        user_prompt=prompt,
-    ))
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return clean_model_summary(_call_openai_chat(
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
+                system_prompt=(
+                    "You are a careful Chinese technology news editor. "
+                    "Write clear, factual, information-dense Chinese summaries. "
+                    "Do not invent facts."
+                ),
+                user_prompt=prompt,
+            ))
+        except RuntimeError as exc:
+            last_error = exc
+            if "HTTP 503" not in str(exc) or attempt >= retries:
+                break
+            time.sleep(2)
+    if last_error:
+        raise last_error
+    return ""

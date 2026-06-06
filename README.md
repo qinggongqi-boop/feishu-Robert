@@ -91,6 +91,7 @@ python main.py --test-feishu --send
 - `OPENAI_API_KEY`：OpenAI 或兼容服务 API Key
 - `OPENAI_BASE_URL`：OpenAI 兼容接口地址，例如 `https://codexx.dns.army/v1`
 - `OPENAI_MODEL`：模型名，例如 `gpt5.4-mini`
+- `OPENAI_SUMMARY_MODEL`：摘要专用模型。可选，默认 `gpt-4.1-mini`；如果 `gpt5.4-mini` 不稳定，建议让摘要模型单独使用更稳定的模型
 - `VOLCENGINE_ACCESS_KEY_ID`：火山引擎 Access Key ID
 - `VOLCENGINE_SECRET_ACCESS_KEY`：火山引擎 Secret Access Key
 - `VOLCENGINE_REGION`：火山引擎区域，默认可填 `cn-north-1`
@@ -121,10 +122,12 @@ python main.py --test-feishu --send
 
 1. 有火山引擎 Secrets 时，优先使用火山引擎机器翻译。
 2. 火山引擎未配置或请求失败时，如果配置了 Azure，则使用 Azure Translator。
-3. 有 `OPENAI_API_KEY` 时，使用 OpenAI 兼容模型做理解式中文摘要，重点讲清楚“发生了什么、为什么重要、后续看什么”。
-4. 模型摘要不合格时，会自动回退到本地摘要；两者都不合格则跳过该条新闻。
-5. 两者都未配置时，进入轻量模式：优先中文新闻，少量保留海外新闻，避免英文长文被免费接口乱翻译。
-6. 如果标题或摘要翻译后仍明显是英文、乱码、菜单广告或内容过短，会跳过该条新闻。
+3. 候选筛选阶段只生成本地摘要，先选出最终 15 条，避免大量调用模型接口。
+4. 最终 15 条确定后，如果有 `OPENAI_API_KEY`，再使用 OpenAI 兼容模型做理解式中文摘要，重点讲清楚“发生了什么、为什么重要、后续看什么”。
+5. 模型遇到 `503` 会自动重试 1 次；模型摘要不合格或接口失败时，会自动回退到本地摘要。
+6. 报告页每条新闻会显示摘要来源：`模型摘要` 或 `本地回退`，方便排查质量问题。
+7. 两者都未配置时，进入轻量模式：优先中文新闻，少量保留海外新闻，避免英文长文被免费接口乱翻译。
+8. 如果标题或摘要翻译后仍明显是英文、乱码、菜单广告或内容过短，会跳过该条新闻。
 
 ## Azure Translator 备用
 
