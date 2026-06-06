@@ -8,6 +8,7 @@ from main import (
     is_content_quality_ok,
     is_raw_item_quality_ok,
     looks_mojibake,
+    postprocess_chinese_text,
     review_chinese_translation,
     select_balanced_items,
 )
@@ -20,7 +21,11 @@ def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
     def fake_stable_translate(text, azure_key=None, azure_region=None, **kwargs):
         calls["stable_translate"].append((text, azure_key, azure_region, kwargs))
         if "reasoning, coding and planning" in text:
-            return "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。后续重点看它在真实业务中的稳定性和落地效果。"
+            return (
+                "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。"
+                "这意味着团队可以把模型用于代码生成、数据分析和复杂任务拆解，而不是只做简单问答。"
+                "后续重点看它在真实业务中的稳定性、成本和落地效果。"
+            )
         return "OpenAI 发布新的 AI 模型"
 
     def fake_openai_translate(text, api_key, base_url, model="gpt-4.1-mini"):
@@ -29,7 +34,11 @@ def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
 
     def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini"):
         calls["summarize"].append((title, description, api_key, model))
-        return "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。后续重点看它在真实业务中的稳定性和落地效果。"
+        return (
+            "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。"
+            "这意味着团队可以把模型用于代码生成、数据分析和复杂任务拆解，而不是只做简单问答。"
+            "后续重点看它在真实业务中的稳定性、成本和落地效果。"
+        )
 
     monkeypatch.setattr("main.translate_to_zh_stable", fake_stable_translate)
     monkeypatch.setattr("main.translate_to_zh_with_base_url", fake_openai_translate)
@@ -69,7 +78,7 @@ def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
     assert enriched["source"] == item.source
     assert enriched["published_at"] == item.published_at
     assert enriched["summary"].startswith("OpenAI 发布的新模型提升了推理")
-    assert len(enriched["summary"]) <= 190
+    assert 80 <= len(enriched["summary"]) <= 500
     assert enriched["original_title"] == item.raw_title
     assert calls["stable_translate"][0] == (
         "OpenAI launches a new model",
@@ -169,7 +178,34 @@ def test_compact_editorial_summary_removes_noise_and_keeps_key_points():
 
     assert "每日报" not in summary
     assert "Gemini" in summary
-    assert len(summary) <= 190
+    assert len(summary) <= 500
+
+
+def test_compact_editorial_summary_prefers_information_dense_sentences():
+    summary = compact_editorial_summary(
+        "这是一篇普通科技新闻。OpenAI 宣布推出新的推理模型，面向开发者开放 API，并强调模型在代码、数学和规划任务上更稳定。"
+        "该公司表示，企业客户可以把模型用于客服自动化、数据分析和内部知识库。"
+        "这件事值得关注，因为它会影响开发者工具、企业采购和同类模型的竞争节奏。"
+        "页面底部还有订阅入口和版权说明。"
+    )
+
+    assert "OpenAI 宣布推出新的推理模型" in summary
+    assert "企业客户" in summary
+    assert "开发者工具" in summary
+    assert "订阅入口" not in summary
+    assert 100 <= len(summary) <= 500
+
+
+def test_postprocess_chinese_text_fixes_common_translation_terms():
+    reviewed = postprocess_chinese_text(
+        "开放人工智能 推出了新的 代理人工智能 产品，聊天GPT 将支持企业用户。",
+        "OpenAI launched a new agentic AI product for ChatGPT enterprise users.",
+    )
+
+    assert "OpenAI" in reviewed
+    assert "智能体 AI" in reviewed
+    assert "ChatGPT" in reviewed
+    assert "开放人工智能" not in reviewed
 
 
 def test_translate_to_zh_stable_uses_volcengine_first(monkeypatch):

@@ -9,7 +9,7 @@ def _clean_text(value: str | None) -> str:
     return " ".join((value or "").split())
 
 
-def _truncate_summary(summary: str, min_chars: int = 200, max_chars: int = 300) -> str:
+def _truncate_summary(summary: str, min_chars: int = 100, max_chars: int = 500) -> str:
     text = _clean_text(summary)
     if len(text) <= max_chars:
         return text
@@ -115,8 +115,12 @@ def build_report_html(
       --shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
     }}
     * {{ box-sizing: border-box; }}
+    html {{
+      overflow-x: hidden;
+    }}
     body {{
       margin: 0;
+      overflow-x: hidden;
       color: var(--ink);
       font-family: ui-serif, "Songti SC", "Noto Serif CJK SC", Georgia, serif;
       background:
@@ -126,8 +130,12 @@ def build_report_html(
       min-height: 100vh;
     }}
     a {{ color: inherit; }}
+    img, figure {{
+      max-width: 100%;
+    }}
     .page {{
       width: min(1120px, calc(100% - 32px));
+      max-width: 100%;
       margin: 0 auto;
       padding: 42px 0 60px;
     }}
@@ -197,8 +205,10 @@ def build_report_html(
     .news-card {{
       position: relative;
       display: grid;
-      grid-template-columns: minmax(220px, 34%) 1fr;
+      grid-template-columns: minmax(220px, 34%) minmax(0, 1fr);
       gap: 0;
+      max-width: 100%;
+      min-width: 0;
       overflow: hidden;
       border: 1px solid var(--line);
       border-radius: 30px;
@@ -220,6 +230,7 @@ def build_report_html(
     .image {{
       min-height: 260px;
       margin: 0;
+      min-width: 0;
       background: #0f172a;
     }}
     .image img {{
@@ -256,6 +267,7 @@ def build_report_html(
     }}
     .placeholder span {{ position: relative; }}
     .content {{
+      min-width: 0;
       padding: clamp(22px, 4vw, 38px);
     }}
     .meta {{
@@ -276,6 +288,8 @@ def build_report_html(
       font-size: clamp(24px, 4.2vw, 42px);
       line-height: 1.12;
       letter-spacing: -0.04em;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
     .original-title {{
       color: var(--muted);
@@ -283,12 +297,16 @@ def build_report_html(
       line-height: 1.55;
       margin: 0 0 18px;
       font-family: ui-sans-serif, system-ui, sans-serif;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
     .summary {{
       margin: 0;
       color: #334155;
       font-size: 17px;
       line-height: 1.9;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
     .actions {{
       margin-top: 22px;
@@ -304,6 +322,9 @@ def build_report_html(
       color: white;
       text-decoration: none;
       font: 800 14px/1 ui-sans-serif, system-ui, sans-serif;
+      max-width: 100%;
+      white-space: normal;
+      text-align: center;
     }}
     .source-link.disabled {{
       background: #cbd5e1;
@@ -324,9 +345,18 @@ def build_report_html(
     @media (max-width: 760px) {{
       .page {{ width: min(100% - 20px, 1120px); padding-top: 18px; }}
       .hero {{ border-radius: 24px; }}
-      .news-card {{ grid-template-columns: 1fr; border-radius: 24px; }}
+      .news-card {{ grid-template-columns: minmax(0, 1fr); border-radius: 24px; }}
       .image, .image img {{ min-height: 210px; }}
       .content {{ padding: 22px; }}
+    }}
+    @media (max-width: 420px) {{
+      .page {{ width: min(100% - 12px, 1120px); }}
+      .hero {{ padding: 22px 18px; }}
+      .content {{ padding: 18px; }}
+      h1 {{ font-size: clamp(34px, 14vw, 52px); }}
+      h2 {{ font-size: clamp(22px, 7vw, 30px); }}
+      .summary {{ font-size: 16px; line-height: 1.82; }}
+      .image, .image img {{ min-height: 188px; }}
     }}
   </style>
 </head>

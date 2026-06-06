@@ -57,6 +57,46 @@ SUMMARY_NOISE_MARKERS = {
     "Newsletter",
     "Subscribe",
 }
+SUMMARY_SIGNAL_TERMS = {
+    "AI",
+    "人工智能",
+    "模型",
+    "大模型",
+    "生成式",
+    "智能体",
+    "芯片",
+    "半导体",
+    "GPU",
+    "数据中心",
+    "云",
+    "发布",
+    "推出",
+    "升级",
+    "开源",
+    "监管",
+    "安全",
+    "政策",
+    "融资",
+    "投资",
+    "收购",
+    "营收",
+    "用户",
+    "开发者",
+    "企业",
+    "OpenAI",
+    "Anthropic",
+    "Google",
+    "DeepMind",
+    "Microsoft",
+    "Meta",
+    "Nvidia",
+    "英伟达",
+    "阿里",
+    "腾讯",
+    "百度",
+    "字节",
+    "华为",
+}
 
 
 def looks_mostly_english(text: str) -> bool:
@@ -175,6 +215,24 @@ def review_chinese_translation(text: str, original_text: str = "") -> str:
         "生成人工智能": "生成式 AI",
         "人工智能模型": "AI 模型",
         "人工智能芯片": "AI 芯片",
+        "人工智能代理": "AI 智能体",
+        "代理人 AI": "智能体 AI",
+        "推理模型": "推理模型",
+        "幻觉": "幻觉",
+        "聊天GPT": "ChatGPT",
+        "开放人工智能": "OpenAI",
+        "开放 AI": "OpenAI",
+        "人类的": "Anthropic",
+        "人择": "Anthropic",
+        "深度思维": "DeepMind",
+        "元人工智能": "Meta AI",
+        "元 AI": "Meta AI",
+        "微软人工智能": "Microsoft AI",
+        "英伟达公司": "英伟达",
+        "黑井": "Blackwell",
+        "布莱克韦尔": "Blackwell",
+        "GB200": "GB200",
+        "GB300": "GB300",
         "超级人工智能时间表": "ASI 时间表",
         "软银 的孙正义": "软银孙正义",
         "OpenAI 的模型": "OpenAI 模型",
@@ -185,6 +243,18 @@ def review_chinese_translation(text: str, original_text: str = "") -> str:
     }
     for bad, good in replacements.items():
         reviewed = reviewed.replace(bad, good)
+    reviewed = re.sub(r"\s+", " ", reviewed).strip()
+    return reviewed
+
+
+def postprocess_chinese_text(text: str, original_text: str = "") -> str:
+    """Normalize machine-translated Chinese before quality checks and report rendering."""
+    reviewed = clean_summary_material(text)
+    reviewed = apply_term_glossary(reviewed)
+    reviewed = review_chinese_translation(reviewed, original_text)
+    reviewed = reviewed.replace(" ,", "，").replace(" .", "。").replace(" ;", "；")
+    reviewed = re.sub(r"\s*([，。！？；：、])\s*", r"\1", reviewed)
+    reviewed = re.sub(r"([。！？]){2,}", r"\1", reviewed)
     reviewed = re.sub(r"\s+", " ", reviewed).strip()
     return reviewed
 
@@ -313,22 +383,62 @@ def split_sentences(text: str) -> list[str]:
     return sentences
 
 
-def compact_editorial_summary(text: str, max_chars: int = 190) -> str:
+def sentence_information_score(sentence: str) -> int:
+    score = 0
+    for term in SUMMARY_SIGNAL_TERMS:
+        if term.lower() in sentence.lower():
+            score += 3
+    score += min(len(re.findall(r"\d+(?:\.\d+)?%?|\d+\s*(?:亿|万|美元|元|人|项|个)", sentence)), 4) * 2
+    score += min(len(re.findall(r"[A-Z][A-Za-z0-9.-]{1,}|[\u4e00-\u9fff]{2,}", sentence)), 12)
+    if any(word in sentence for word in ("表示", "称", "宣布", "推出", "发布", "计划", "将", "正在", "已")):
+        score += 2
+    if any(word in sentence for word in ("值得关注", "影响", "意味着", "可能", "后续", "竞争", "落地")):
+        score += 2
+    if has_noise_markers(sentence) or looks_mojibake(sentence):
+        score -= 20
+    if len(sentence) < 18:
+        score -= 4
+    return score
+
+
+def compact_editorial_summary(text: str, min_chars: int = 100, max_chars: int = 500) -> str:
     clean_text = clean_summary_material(text)
     sentences = split_sentences(clean_text)
     if not sentences and len(clean_text) >= 30:
         sentences = [clean_text]
-    selected: list[str] = []
-    for sentence in sentences:
-        if sentence in selected:
+    if not sentences:
+        return ""
+
+    indexed_sentences = list(enumerate(sentences))
+    selected_indexes: set[int] = set()
+    if indexed_sentences:
+        selected_indexes.add(0)
+    ranked = sorted(
+        indexed_sentences,
+        key=lambda item: (sentence_information_score(item[1]), -item[0]),
+        reverse=True,
+    )
+    current_len = sum(len(sentences[index]) for index in selected_indexes)
+    for index, sentence in ranked:
+        if index in selected_indexes:
             continue
-        selected.append(sentence.rstrip("。！？!?") + "。")
-        if len("".join(selected)) >= 110 or len(selected) >= 3:
+        if current_len >= min_chars and len(selected_indexes) >= 3:
             break
+        selected_indexes.add(index)
+        current_len += len(sentence)
+
+    selected: list[str] = []
+    for index in sorted(selected_indexes):
+        sentence = postprocess_chinese_text(sentences[index], clean_text).rstrip("。！？!?")
+        if sentence and sentence not in selected:
+            selected.append(sentence + "。")
     result = "".join(selected).strip()
     if len(result) > max_chars:
         cut = result[:max_chars].rsplit("。", 1)[0]
         result = (cut or result[:max_chars]).rstrip("，。；;,. ") + "。"
+    result = postprocess_chinese_text(result, clean_text)
+    if result and not result.endswith(("。", "！", "？")):
+        result += "。"
     return result
 
 
@@ -361,12 +471,10 @@ def build_local_summary(
             )
         return ""
     else:
-        material_source = clean_source[:600]
+        material_source = clean_source[:1200]
         translated = translate_to_zh_stable(material_source, azure_key=azure_translator_key, azure_region=azure_translator_region, volcengine_access_key_id=volcengine_access_key_id, volcengine_secret_access_key=volcengine_secret_access_key, volcengine_region=volcengine_region)
         material = translated if translated and translated != material_source else material_source
-    material = apply_term_glossary(material)
-    material = review_chinese_translation(material, source_text)
-    material = clean_summary_material(material)
+    material = postprocess_chinese_text(material, source_text)
     summary = compact_editorial_summary(material)
     if summary and not has_noise_markers(summary):
         return summary
@@ -401,11 +509,11 @@ def polish_summary(
             volcengine_region=volcengine_region,
         )
     clean_summary = clean_summary_material(clean_summary)
-    clean_summary = review_chinese_translation(clean_summary, source_text)
+    clean_summary = postprocess_chinese_text(clean_summary, source_text)
     compact = compact_editorial_summary(clean_summary)
     if compact and not has_noise_markers(compact):
         return compact
-    return clean_summary[:190].rstrip("，。；;,. ") + "。"
+    return clean_summary[:500].rstrip("，。；;,. ") + "。"
 
 
 def build_summary_source(item, metadata: ArticleMetadata | None) -> str:
