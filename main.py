@@ -425,6 +425,11 @@ def clean_summary_material(text: str) -> str:
         r"通过 TechBuzz Press.*?(?=。|$)",
         r"《每日报》将最新技术更新直接发送到您的收件箱。?",
         r"吸引超过\s*110\s*万订阅者。?",
+        r"审核人[:：]\s*[^。；;，,]{1,40}",
+        r"发布于[:：]\s*\d{4}年\d{1,2}月\d{1,2}日[^。；;，,]{0,30}",
+        r"更新于[:：]\s*\d{4}年\d{1,2}月\d{1,2}日[^。；;，,]{0,30}",
+        r"复制概述[:：]?",
+        r"概述[:：]\s*",
     ]
     cleaned = text
     for pattern in noise_patterns:
@@ -435,6 +440,37 @@ def clean_summary_material(text: str) -> str:
     cleaned = re.sub(r"直播电视|政治 土耳其|信息图专题|时事通讯|文章 时事通讯", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
+
+
+def normalize_sentence_key(sentence: str) -> str:
+    normalized = re.sub(r"[^\w\u4e00-\u9fff]+", "", sentence.lower())
+    normalized = re.sub(r"\d{4}年\d{1,2}月\d{1,2}日", "", normalized)
+    return normalized
+
+
+def is_summary_noise_sentence(sentence: str) -> bool:
+    clean_sentence = " ".join((sentence or "").split())
+    if not clean_sentence:
+        return True
+    if has_noise_markers(clean_sentence) or looks_mojibake(clean_sentence):
+        return True
+    metadata_markers = (
+        "审核人",
+        "发布于",
+        "更新于",
+        "复制概述",
+        "责任编辑",
+        "编辑：",
+        "作者：",
+        "来源：",
+        "图片来源",
+        "阅读更多",
+    )
+    if any(marker in clean_sentence for marker in metadata_markers):
+        return True
+    if re.fullmatch(r"[\d\s年月日:：,，;；.-]+", clean_sentence):
+        return True
+    return False
 
 
 def split_sentences(text: str) -> list[str]:
@@ -449,9 +485,10 @@ def split_sentences(text: str) -> list[str]:
         min_length = 8 if has_chinese else 16
         if len(sentence) < min_length:
             continue
-        if has_noise_markers(sentence) or looks_mojibake(sentence):
+        if is_summary_noise_sentence(sentence):
             continue
-        if sentence not in sentences:
+        sentence_key = normalize_sentence_key(sentence)
+        if sentence_key and all(sentence_key not in normalize_sentence_key(existing) for existing in sentences):
             sentences.append(sentence)
     return sentences
 
@@ -469,9 +506,67 @@ def sentence_information_score(sentence: str) -> int:
         score += 2
     if has_noise_markers(sentence) or looks_mojibake(sentence):
         score -= 20
+    if is_summary_noise_sentence(sentence):
+        score -= 30
     if len(sentence) < 18:
         score -= 4
     return score
+
+
+def build_structured_local_summary(sentences: list[str], min_chars: int, max_chars: int) -> str:
+    fact_sentences = [
+        sentence
+        for sentence in sentences
+        if not is_summary_noise_sentence(sentence)
+        and any(term.lower() in sentence.lower() for term in SUMMARY_SIGNAL_TERMS)
+        and any(term in sentence for term in SUMMARY_ACTION_TERMS)
+    ]
+    context_sentences = [
+        sentence
+        for sentence in sentences
+        if not is_summary_noise_sentence(sentence)
+        and any(term in sentence for term in SUMMARY_IMPACT_TERMS)
+    ]
+    followup_sentences = [
+        sentence
+        for sentence in sentences
+        if not is_summary_noise_sentence(sentence)
+        and any(term in sentence for term in ("后续", "接下来", "需要观察", "值得观察", "仍需关注"))
+    ]
+    ranked = sorted(sentences, key=sentence_information_score, reverse=True)
+    selected: list[str] = []
+    for pool in (fact_sentences, context_sentences, followup_sentences, ranked):
+        for sentence in pool:
+            sentence = postprocess_chinese_text(sentence, " ".join(sentences)).rstrip("。！？!?")
+            if not sentence or is_summary_noise_sentence(sentence):
+                continue
+            sentence_key = normalize_sentence_key(sentence)
+            if not sentence_key or any(sentence_key in normalize_sentence_key(existing) for existing in selected):
+                continue
+            candidate = "。".join(selected + [sentence]) + "。"
+            if len(candidate) > max_chars:
+                continue
+            selected.append(sentence)
+            has_followup = any(
+                any(term in existing for term in ("后续", "接下来", "需要观察", "值得观察", "仍需关注"))
+                for existing in selected
+            )
+            if len("。".join(selected)) >= min_chars and len(selected) >= 2 and (has_followup or len(selected) >= 3):
+                break
+        has_followup = any(
+            any(term in existing for term in ("后续", "接下来", "需要观察", "值得观察", "仍需关注"))
+            for existing in selected
+        )
+        if len("。".join(selected)) >= min_chars and len(selected) >= 2 and (has_followup or len(selected) >= 3):
+            break
+
+    result = "。".join(selected).strip()
+    if result:
+        result += "。"
+    if len(result) > max_chars:
+        cut = result[:max_chars].rsplit("。", 1)[0]
+        result = (cut or result[:max_chars]).rstrip("，。；;,. ") + "。"
+    return result
 
 
 def compact_editorial_summary(text: str, min_chars: int = 100, max_chars: int = 500) -> str:
@@ -481,6 +576,10 @@ def compact_editorial_summary(text: str, min_chars: int = 100, max_chars: int = 
         sentences = [clean_text]
     if not sentences:
         return ""
+
+    structured = build_structured_local_summary(sentences, min_chars=min_chars, max_chars=max_chars)
+    if structured and len(structured) >= min_chars:
+        return postprocess_chinese_text(structured, clean_text)
 
     indexed_sentences = list(enumerate(sentences))
     selected_indexes: set[int] = set()

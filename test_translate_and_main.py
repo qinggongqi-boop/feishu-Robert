@@ -401,6 +401,22 @@ def test_compact_editorial_summary_prefers_information_dense_sentences():
     assert 100 <= len(summary) <= 500
 
 
+def test_compact_editorial_summary_removes_metadata_and_duplicate_overview():
+    summary = compact_editorial_summary(
+        "概述：多模态AI正在通过将文本，图像，音频，视频和传感器数据组合成单一理解来改变机器处理信息的方式。"
+        "审核人：Sankha Ghosh发布于：2026年6月5日，晚上8点更新于：2026年6月5日，晚上8点复制概述："
+        "多模态AI正在通过将文本，图像，音频，视频和传感器数据组合成单一理解来改变机器处理信息的方式。"
+        "随着AI变得更加具有上下文感知能力，企业和消费者可能会体验到与技术的更自然、更准确和更智能的交互。"
+    )
+
+    assert "审核人" not in summary
+    assert "发布于" not in summary
+    assert "更新于" not in summary
+    assert "复制概述" not in summary
+    assert summary.count("多模态AI正在通过") == 1
+    assert "企业和消费者" in summary
+
+
 def test_postprocess_chinese_text_fixes_common_translation_terms():
     reviewed = postprocess_chinese_text(
         "开放人工智能 推出了新的 代理人工智能 产品，聊天GPT 将支持企业用户。",
