@@ -21,6 +21,15 @@ def test_app_config_defaults_to_post_and_15_items(monkeypatch):
     assert app.openai_summary_model == "gpt-4.1-mini"
     assert app.report_base_url == "https://qinggongqi-boop.github.io/feishu-Robert"
     assert app.report_output_dir.name == "docs"
+    assert app.report_keep_days == 7
+
+
+def test_app_config_reads_report_keep_days(monkeypatch):
+    monkeypatch.setenv("REPORT_KEEP_DAYS", "3")
+
+    app = load_app_config()
+
+    assert app.report_keep_days == 3
 
 
 def test_app_config_summary_model_follows_openai_model_by_default(monkeypatch):

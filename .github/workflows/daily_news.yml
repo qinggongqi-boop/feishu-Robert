@@ -79,6 +79,7 @@ jobs:
           OPENAI_SUMMARY_ENABLED: "true"
           REPORT_BASE_URL: https://qinggongqi-boop.github.io/feishu-Robert
           REPORT_OUTPUT_DIR: docs
+          REPORT_KEEP_DAYS: "7"
         run: |
           set -o pipefail
           mkdir -p logs
@@ -110,6 +111,7 @@ jobs:
           APP_TIMEZONE: Asia/Shanghai
           REPORT_BASE_URL: https://qinggongqi-boop.github.io/feishu-Robert
           REPORT_OUTPUT_DIR: docs
+          REPORT_KEEP_DAYS: "7"
         run: |
           set -o pipefail
           python main.py --notify-meta logs/report_meta.json --send 2>&1 | tee -a logs/daily_news.log

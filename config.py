@@ -48,6 +48,7 @@ class AppConfig:
     max_news_items: int
     report_base_url: str
     report_output_dir: Path
+    report_keep_days: int
     fetch_timeout_seconds: int
     fetch_retries: int
     max_image_uploads: int
@@ -116,6 +117,7 @@ def load_app_config(
         max_news_items=int(os.getenv("MAX_NEWS_ITEMS", "15")),
         report_base_url=os.getenv("REPORT_BASE_URL", "https://qinggongqi-boop.github.io/feishu-Robert").rstrip("/"),
         report_output_dir=Path(os.getenv("REPORT_OUTPUT_DIR", "docs")),
+        report_keep_days=int(os.getenv("REPORT_KEEP_DAYS", "7")),
         fetch_timeout_seconds=int(os.getenv("FETCH_TIMEOUT_SECONDS", "15")),
         fetch_retries=int(os.getenv("FETCH_RETRIES", "3")),
         max_image_uploads=int(os.getenv("MAX_IMAGE_UPLOADS", "5")),

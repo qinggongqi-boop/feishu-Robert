@@ -65,6 +65,8 @@ python main.py
 python main.py --write-meta logs/report_meta.json
 ```
 
+报告默认保留最近 7 天，可通过 `REPORT_KEEP_DAYS` 调整。
+
 根据元数据发送飞书链接，并把 URL 写入去重库：
 
 ```bash

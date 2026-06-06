@@ -1118,6 +1118,7 @@ def main() -> int:
         total_count=len(fetch_result.items),
         selected_count=len(enriched),
         generated_at=generated_at,
+        keep_days=app.report_keep_days,
     )
     report_url = f"{app.report_base_url}/{target_date}.html"
     logger.info("Report path: %s", report_path)
