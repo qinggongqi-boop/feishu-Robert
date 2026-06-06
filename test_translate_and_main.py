@@ -318,6 +318,42 @@ def test_final_summary_enhancement_marks_local_fallback_when_model_fails(monkeyp
     assert items[0]["summary"] == "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。"
 
 
+def test_final_summary_enhancement_stops_when_model_is_unsupported(monkeypatch):
+    calls = []
+
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
+        calls.append(title)
+        raise RuntimeError("OpenAI request failed with HTTP 400: model is not supported")
+
+    monkeypatch.setattr("main.summarize_to_zh", fake_summarize)
+    items = [
+        {
+            "title": "OpenAI 发布新模型",
+            "summary": "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。",
+            "summary_material": "OpenAI says the release is designed for production use cases and enterprise teams.",
+            "summary_source": "本地回退",
+            "url": "https://example.com/one",
+        },
+        {
+            "title": "Google 发布 AI 更新",
+            "summary": "Google 发布 AI 产品更新，面向企业和开发者改进云端应用能力。",
+            "summary_material": "Google released AI product updates for enterprise teams and developers.",
+            "summary_source": "本地回退",
+            "url": "https://example.com/two",
+        },
+    ]
+
+    enhance_final_summaries_with_model(
+        items,
+        openai_api_key="test-key",
+        openai_base_url="https://api.example.com/v1",
+        openai_summary_model="unsupported-model",
+    )
+
+    assert calls == ["OpenAI 发布新模型"]
+    assert [item["summary_source"] for item in items] == ["本地回退", "本地回退"]
+
+
 def test_noise_source_and_summary_are_rejected():
     noisy = NewsItem(
         title="Oracle faces questions around pace of AI data center buildout",

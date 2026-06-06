@@ -757,7 +757,7 @@ def enhance_final_summaries_with_model(
 
     model_count = 0
     fallback_count = 0
-    for item in items:
+    for index, item in enumerate(items):
         local_summary = item.get("summary", "")
         material = item.get("summary_material") or local_summary
         title = item.get("title") or item.get("original_title") or ""
@@ -779,6 +779,15 @@ def enhance_final_summaries_with_model(
             logger.info("Model summary failed quality gate for %s; using local summary", item.get("url", ""))
         except Exception as exc:
             logger.warning("Summary generation failed for %s: %s", item.get("url", ""), exc)
+            if "not supported" in str(exc) or "HTTP 400" in str(exc):
+                for remaining_item in items[index:]:
+                    remaining_item["summary_source"] = "本地回退"
+                fallback_count += len(items) - index
+                logger.warning(
+                    "Model summary enhancement stopped because model %s is unsupported",
+                    openai_summary_model,
+                )
+                break
         item["summary"] = local_summary
         item["summary_source"] = "本地回退"
         fallback_count += 1

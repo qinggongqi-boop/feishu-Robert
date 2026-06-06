@@ -91,7 +91,7 @@ python main.py --test-feishu --send
 - `OPENAI_API_KEY`：OpenAI 或兼容服务 API Key
 - `OPENAI_BASE_URL`：OpenAI 兼容接口地址，例如 `https://codexx.dns.army/v1`
 - `OPENAI_MODEL`：模型名，例如 `gpt5.4-mini`
-- `OPENAI_SUMMARY_MODEL`：摘要专用模型。可选，默认 `gpt-4.1-mini`；如果 `gpt5.4-mini` 不稳定，建议让摘要模型单独使用更稳定的模型
+- `OPENAI_SUMMARY_MODEL`：摘要专用模型。可选；不填时默认跟随 `OPENAI_MODEL`。如果当前模型不稳定，可以单独填写服务商支持的更稳定模型
 - `VOLCENGINE_ACCESS_KEY_ID`：火山引擎 Access Key ID
 - `VOLCENGINE_SECRET_ACCESS_KEY`：火山引擎 Secret Access Key
 - `VOLCENGINE_REGION`：火山引擎区域，默认可填 `cn-north-1`
