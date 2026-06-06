@@ -66,6 +66,7 @@ python main.py --write-meta logs/report_meta.json
 ```
 
 报告默认保留最近 7 天，可通过 `REPORT_KEEP_DAYS` 调整。
+精选新闻图片会优先下载到 `docs/assets/images/YYYY-MM-DD/`，报告页引用 GitHub Pages 本地图片；下载失败时自动显示占位图，避免外链破图。
 
 根据元数据发送飞书链接，并把 URL 写入去重库：
 

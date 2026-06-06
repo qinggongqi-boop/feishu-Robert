@@ -20,6 +20,7 @@ from fetch_news import (
     resolve_google_news_url,
     scrape_article_metadata,
 )
+from images import cleanup_old_image_dirs, localize_report_images
 from feishu import (
     build_feishu_text_payload,
     payload_to_json,
@@ -1109,6 +1110,18 @@ def main() -> int:
         item["conclusion"] = item.get("summary", item["title"])[:80]
         if item.get("image_url"):
             item["cover"] = item["image_url"]
+
+    localized_images = localize_report_images(
+        enriched,
+        output_dir=app.report_output_dir,
+        target_date=target_date,
+        timeout_seconds=app.fetch_timeout_seconds,
+        retries=app.fetch_retries,
+        user_agent=app.user_agent,
+        max_images_per_item=1,
+    )
+    cleanup_old_image_dirs(app.report_output_dir, target_date=target_date, keep_days=app.report_keep_days)
+    logger.info("Localized report images: %d", localized_images)
 
     generated_at = datetime.now(ZoneInfo(app.timezone)).strftime("%Y-%m-%d %H:%M %Z")
     report_path = write_report(
