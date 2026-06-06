@@ -9,7 +9,7 @@ sources:
   - name: Google News AI Global
     kind: google_news
     language: en
-    query: artificial intelligence OR generative AI OR large language model
+    query: (artificial intelligence OR generative AI OR large language model) when:1d -stock -market -salary -press release
     hl: en-US
     gl: US
     ceid: US:en
@@ -19,7 +19,7 @@ sources:
   - name: Google News AI Companies
     kind: google_news
     language: en
-    query: OpenAI OR Anthropic OR Google DeepMind OR Meta AI OR Microsoft AI
+    query: (OpenAI OR Anthropic OR Google DeepMind OR Meta AI OR Microsoft AI) when:1d -stock -market -press release
     hl: en-US
     gl: US
     ceid: US:en
@@ -29,7 +29,7 @@ sources:
   - name: Google News AI Chips
     kind: google_news
     language: en
-    query: AI chips OR Nvidia OR GPU OR semiconductor artificial intelligence
+    query: (AI chips OR Nvidia OR GPU OR semiconductor artificial intelligence) when:1d -stock -market -price target
     hl: en-US
     gl: US
     ceid: US:en
@@ -39,7 +39,7 @@ sources:
   - name: Google News 人工智能
     kind: google_news
     language: zh
-    query: 人工智能 OR 大模型 OR 生成式AI
+    query: (人工智能 OR 大模型 OR 生成式AI OR 机器人) when:1d -股票 -股价 -概念股 -融资融券
     hl: zh-CN
     gl: CN
     ceid: CN:zh-Hans
@@ -49,7 +49,7 @@ sources:
   - name: Google News AI Regulation
     kind: google_news
     language: en
-    query: AI regulation OR AI safety OR artificial intelligence policy
+    query: (AI regulation OR AI safety OR artificial intelligence policy) when:1d -stock -market -press release
     hl: en-US
     gl: US
     ceid: US:en
@@ -66,7 +66,7 @@ sources:
   - name: Google News 中国科技
     kind: google_news
     language: zh
-    query: 科技 公司 AI OR 芯片 OR 机器人 OR 自动驾驶
+    query: (科技 AI OR 芯片 OR 机器人 OR 自动驾驶 OR 大模型) when:1d -股票 -股价 -概念股 -行情
     hl: zh-CN
     gl: CN
     ceid: CN:zh-Hans
@@ -76,7 +76,7 @@ sources:
   - name: Google News Tech Major
     kind: google_news
     language: en
-    query: major technology news AI OR chips OR robotics OR cloud
+    query: (major technology news AI OR chips OR robotics OR cloud) when:1d -stock -market -earnings
     hl: en-US
     gl: US
     ceid: US:en

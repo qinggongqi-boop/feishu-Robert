@@ -36,6 +36,10 @@ class AppConfig:
     openai_api_key: str | None
     openai_base_url: str
     openai_model: str
+    openai_summary_enabled: bool
+    volcengine_access_key_id: str | None
+    volcengine_secret_access_key: str | None
+    volcengine_region: str
     azure_translator_key: str | None
     azure_translator_region: str | None
     feishu_message_format: str
@@ -99,6 +103,10 @@ def load_app_config(
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+        openai_summary_enabled=os.getenv("OPENAI_SUMMARY_ENABLED", "false").lower() == "true",
+        volcengine_access_key_id=os.getenv("VOLCENGINE_ACCESS_KEY_ID") or os.getenv("VOLC_ACCESS_KEY_ID"),
+        volcengine_secret_access_key=os.getenv("VOLCENGINE_SECRET_ACCESS_KEY") or os.getenv("VOLC_SECRET_ACCESS_KEY"),
+        volcengine_region=os.getenv("VOLCENGINE_REGION") or os.getenv("VOLC_REGION", "cn-north-1"),
         azure_translator_key=os.getenv("AZURE_TRANSLATOR_KEY"),
         azure_translator_region=os.getenv("AZURE_TRANSLATOR_REGION"),
         feishu_message_format=os.getenv("FEISHU_MESSAGE_FORMAT", "post"),

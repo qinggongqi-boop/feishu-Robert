@@ -19,3 +19,15 @@ def test_app_config_defaults_to_post_and_15_items(monkeypatch):
     assert app.max_image_uploads == 5
     assert app.report_base_url == "https://qinggongqi-boop.github.io/feishu-Robert"
     assert app.report_output_dir.name == "docs"
+
+
+def test_app_config_reads_volcengine_translator_env(monkeypatch):
+    monkeypatch.setenv("VOLCENGINE_ACCESS_KEY_ID", "test-ak")
+    monkeypatch.setenv("VOLCENGINE_SECRET_ACCESS_KEY", "test-sk")
+    monkeypatch.setenv("VOLCENGINE_REGION", "cn-north-1")
+
+    app = load_app_config()
+
+    assert app.volcengine_access_key_id == "test-ak"
+    assert app.volcengine_secret_access_key == "test-sk"
+    assert app.volcengine_region == "cn-north-1"

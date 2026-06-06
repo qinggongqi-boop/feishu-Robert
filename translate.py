@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+from datetime import datetime, timezone
 from urllib import request, error
+from urllib.parse import quote
 from uuid import uuid4
 
 import requests
 
 
 OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
+VOLCENGINE_TRANSLATE_HOST = "translate.volcengineapi.com"
+VOLCENGINE_TRANSLATE_ACTION = "TranslateText"
+VOLCENGINE_TRANSLATE_VERSION = "2020-06-01"
+VOLCENGINE_TRANSLATE_SERVICE = "translate"
 
 
 def _call_openai_chat(
@@ -91,7 +99,7 @@ def translate_to_zh_fallback(text: str) -> str:
             "https://translate.googleapis.com/translate_a/single",
             params={"client": "gtx", "sl": "auto", "tl": "zh-CN", "dt": "t", "q": source_text},
             headers={"User-Agent": "Mozilla/5.0 (compatible; AI-News-Bot/1.0)"},
-            timeout=15,
+            timeout=8,
         )
         response.raise_for_status()
         body = response.json()
@@ -126,7 +134,7 @@ def translate_to_zh_azure(
                 "X-ClientTraceId": str(uuid4()),
             },
             json=[{"text": source_text}],
-            timeout=20,
+            timeout=10,
         )
         response.raise_for_status()
         body = response.json()
@@ -136,11 +144,121 @@ def translate_to_zh_azure(
     return translated.strip() or source_text
 
 
-def translate_to_zh_stable(text: str, azure_key: str | None = None, azure_region: str | None = None) -> str:
-    """Translate with Azure first, then fall back to Google's no-key endpoint."""
+def _volcengine_hmac_sha256(key: bytes, message: str) -> bytes:
+    return hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
+
+
+def _volcengine_signing_key(secret_key: str, date: str, region: str, service: str) -> bytes:
+    date_key = _volcengine_hmac_sha256(secret_key.encode("utf-8"), date)
+    region_key = _volcengine_hmac_sha256(date_key, region)
+    service_key = _volcengine_hmac_sha256(region_key, service)
+    return _volcengine_hmac_sha256(service_key, "request")
+
+
+def translate_to_zh_volcengine(
+    text: str,
+    access_key_id: str | None,
+    secret_access_key: str | None,
+    region: str = "cn-north-1",
+) -> str:
     source_text = text.strip()
     if not source_text:
         return ""
+    if not access_key_id or not secret_access_key:
+        return source_text
+
+    method = "POST"
+    path = "/"
+    query = f"Action={VOLCENGINE_TRANSLATE_ACTION}&Version={VOLCENGINE_TRANSLATE_VERSION}"
+    body = json.dumps(
+        {"TargetLanguage": "zh", "TextList": [source_text]},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    body_hash = hashlib.sha256(body).hexdigest()
+    now = datetime.now(timezone.utc)
+    x_date = now.strftime("%Y%m%dT%H%M%SZ")
+    short_date = now.strftime("%Y%m%d")
+    credential_scope = f"{short_date}/{region}/{VOLCENGINE_TRANSLATE_SERVICE}/request"
+    canonical_headers = (
+        "content-type:application/json\n"
+        f"host:{VOLCENGINE_TRANSLATE_HOST}\n"
+        f"x-content-sha256:{body_hash}\n"
+        f"x-date:{x_date}\n"
+    )
+    signed_headers = "content-type;host;x-content-sha256;x-date"
+    canonical_request = "\n".join(
+        [method, path, query, canonical_headers, signed_headers, body_hash]
+    )
+    string_to_sign = "\n".join(
+        [
+            "HMAC-SHA256",
+            x_date,
+            credential_scope,
+            hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
+        ]
+    )
+    signing_key = _volcengine_signing_key(
+        secret_access_key,
+        short_date,
+        region,
+        VOLCENGINE_TRANSLATE_SERVICE,
+    )
+    signature = hmac.new(signing_key, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+    authorization = (
+        "HMAC-SHA256 "
+        f"Credential={quote(access_key_id)}/{credential_scope}, "
+        f"SignedHeaders={signed_headers}, "
+        f"Signature={signature}"
+    )
+    try:
+        response = requests.post(
+            f"https://{VOLCENGINE_TRANSLATE_HOST}/?{query}",
+            headers={
+                "Authorization": authorization,
+                "Content-Type": "application/json",
+                "Host": VOLCENGINE_TRANSLATE_HOST,
+                "X-Content-Sha256": body_hash,
+                "X-Date": x_date,
+            },
+            data=body,
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        return source_text
+
+    error_payload = (payload.get("ResponseMetadata") or {}).get("Error")
+    if error_payload:
+        return source_text
+    try:
+        translated = payload["TranslationList"][0]["Translation"]
+    except (KeyError, IndexError, TypeError):
+        return source_text
+    return translated.strip() or source_text
+
+
+def translate_to_zh_stable(
+    text: str,
+    azure_key: str | None = None,
+    azure_region: str | None = None,
+    volcengine_access_key_id: str | None = None,
+    volcengine_secret_access_key: str | None = None,
+    volcengine_region: str = "cn-north-1",
+) -> str:
+    """Translate with Volcengine first, then Azure, then Google's no-key endpoint."""
+    source_text = text.strip()
+    if not source_text:
+        return ""
+    translated = translate_to_zh_volcengine(
+        source_text,
+        access_key_id=volcengine_access_key_id,
+        secret_access_key=volcengine_secret_access_key,
+        region=volcengine_region,
+    )
+    if translated and translated != source_text:
+        return translated
     translated = translate_to_zh_azure(source_text, key=azure_key, region=azure_region)
     if translated and translated != source_text:
         return translated

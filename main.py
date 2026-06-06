@@ -33,8 +33,30 @@ from translate import translate_to_zh_stable, translate_to_zh_with_base_url
 logger = logging.getLogger(__name__)
 DOMESTIC_MIN_ITEMS = 4
 OVERSEAS_MIN_ITEMS = 6
-QUALITY_CANDIDATE_MULTIPLIER = 3
+QUALITY_CANDIDATE_MULTIPLIER = 5
 MOJIBAKE_CHARS = set("�ÃÂåæçðø¢£¤¥¦§¨©ª«¬®¯°±²³´µ¶·¸¹º¼½¾¿ÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß")
+LOW_QUALITY_SOURCES = {
+    "moomoo",
+    "vocal.media",
+    "the tech buzz",
+    "trt world",
+    "aibase",
+}
+SUMMARY_NOISE_MARKERS = {
+    "口座開設",
+    "入金 出金",
+    "米国株現物取引",
+    "銘柄スクリーナー",
+    "TechBuzz Press",
+    "110 万订阅者",
+    "110万订阅者",
+    "The Daily Brief",
+    "latest technology updates sent directly",
+    "Home Top Stories",
+    "Main navigation",
+    "Newsletter",
+    "Subscribe",
+}
 
 
 def looks_mostly_english(text: str) -> bool:
@@ -61,12 +83,14 @@ def looks_mojibake(text: str) -> bool:
     return len(odd_sequences) >= 5
 
 
-def is_content_quality_ok(title: str, summary: str, original_title: str = "") -> bool:
+def is_content_quality_ok(title: str, summary: str, original_title: str = "", min_summary_chars: int = 80) -> bool:
     if looks_mojibake(title) or looks_mojibake(summary):
+        return False
+    if has_noise_markers(summary):
         return False
     if looks_mostly_english(title):
         return False
-    if len("".join(summary.split())) < 120:
+    if len("".join(summary.split())) < min_summary_chars:
         return False
     if original_title and title.strip() == original_title.strip() and looks_mostly_english(original_title):
         return False
@@ -75,7 +99,19 @@ def is_content_quality_ok(title: str, summary: str, original_title: str = "") ->
 
 def is_raw_item_quality_ok(item) -> bool:
     raw_text = " ".join([item.title or "", item.summary or "", item.raw_summary or ""])
-    return not looks_mojibake(raw_text)
+    if is_low_quality_source(item.source):
+        return False
+    return not looks_mojibake(raw_text) and not has_noise_markers(raw_text)
+
+
+def is_low_quality_source(source: str) -> bool:
+    source_lower = (source or "").lower()
+    return any(marker in source_lower for marker in LOW_QUALITY_SOURCES)
+
+
+def has_noise_markers(text: str) -> bool:
+    clean_text = text or ""
+    return any(marker.lower() in clean_text.lower() for marker in SUMMARY_NOISE_MARKERS)
 
 
 TERM_TRANSLATIONS = [
@@ -196,8 +232,11 @@ def chinese_fallback_title(
     title: str,
     azure_translator_key: str | None = None,
     azure_translator_region: str | None = None,
+    volcengine_access_key_id: str | None = None,
+    volcengine_secret_access_key: str | None = None,
+    volcengine_region: str = "cn-north-1",
 ) -> str:
-    translated = translate_to_zh_stable(title, azure_translator_key, azure_translator_region)
+    translated = translate_to_zh_stable(title, azure_key=azure_translator_key, azure_region=azure_translator_region, volcengine_access_key_id=volcengine_access_key_id, volcengine_secret_access_key=volcengine_secret_access_key, volcengine_region=volcengine_region)
     if translated and translated != title:
         return review_chinese_translation(strip_chinese_source_suffix(translated), title)
     return review_chinese_translation(heuristic_english_title_to_zh(title), title)
@@ -209,21 +248,21 @@ def chinese_fallback_summary(
     source: str,
     azure_translator_key: str | None = None,
     azure_translator_region: str | None = None,
+    volcengine_access_key_id: str | None = None,
+    volcengine_secret_access_key: str | None = None,
+    volcengine_region: str = "cn-north-1",
 ) -> str:
     source_text = " ".join((summary or title).split())
     if not source_text:
         return f"这篇来自 {source} 的报道涉及 AI 或科技行业的重要动态，建议结合原文进一步查看事件细节、相关公司表态以及后续影响。"
-    translated = translate_to_zh_stable(source_text, azure_translator_key, azure_translator_region)
+    translated = translate_to_zh_stable(source_text, azure_key=azure_translator_key, azure_region=azure_translator_region, volcengine_access_key_id=volcengine_access_key_id, volcengine_secret_access_key=volcengine_secret_access_key, volcengine_region=volcengine_region)
     clean_text = translated if translated and translated != source_text else apply_term_glossary(source_text)
     clean_text = clean_summary_material(clean_text)
     clean_text = review_chinese_translation(clean_text, source_text)
-    clean_text = clean_text.rstrip("。；;,.，")
-    base = (
-        f"据 {source} 报道，{clean_text}。"
-        "这条消息的看点在于，它反映出 AI 技术正在从模型能力展示继续走向产业应用、组织决策或监管讨论。"
-        "后续值得关注相关公司是否披露更多产品细节、商业化路径和落地效果，以及这会如何影响行业竞争和用户体验。"
-    )
-    return base[:320].strip()
+    clean_text = compact_editorial_summary(clean_text)
+    if not clean_text:
+        return ""
+    return clean_text
 
 
 def clean_summary_material(text: str) -> str:
@@ -238,6 +277,11 @@ def clean_summary_material(text: str) -> str:
         r"主导航.*?(?=\d|人工智能|AI)",
         r"主页 热门故事 最新故事",
         r"广告 搜索",
+        r"はじめての方へ.*?(?=。|$)",
+        r"口座開設の流れ.*?(?=。|$)",
+        r"通过 TechBuzz Press.*?(?=。|$)",
+        r"《每日报》将最新技术更新直接发送到您的收件箱。?",
+        r"吸引超过\s*110\s*万订阅者。?",
     ]
     cleaned = text
     for pattern in noise_patterns:
@@ -250,6 +294,88 @@ def clean_summary_material(text: str) -> str:
     return cleaned
 
 
+def split_sentences(text: str) -> list[str]:
+    clean_text = " ".join((text or "").split())
+    if not clean_text:
+        return []
+    parts = re.split(r"(?<=[。！？!?])\s+|(?<=[。！？!?])|(?<=[.!?])\s+", clean_text)
+    sentences: list[str] = []
+    for part in parts:
+        sentence = part.strip(" ，,;；")
+        has_chinese = bool(re.search(r"[\u4e00-\u9fff]", sentence))
+        min_length = 8 if has_chinese else 16
+        if len(sentence) < min_length:
+            continue
+        if has_noise_markers(sentence) or looks_mojibake(sentence):
+            continue
+        if sentence not in sentences:
+            sentences.append(sentence)
+    return sentences
+
+
+def compact_editorial_summary(text: str, max_chars: int = 190) -> str:
+    clean_text = clean_summary_material(text)
+    sentences = split_sentences(clean_text)
+    if not sentences and len(clean_text) >= 30:
+        sentences = [clean_text]
+    selected: list[str] = []
+    for sentence in sentences:
+        if sentence in selected:
+            continue
+        selected.append(sentence.rstrip("。！？!?") + "。")
+        if len("".join(selected)) >= 110 or len(selected) >= 3:
+            break
+    result = "".join(selected).strip()
+    if len(result) > max_chars:
+        cut = result[:max_chars].rsplit("。", 1)[0]
+        result = (cut or result[:max_chars]).rstrip("，。；;,. ") + "。"
+    return result
+
+
+def build_local_summary(
+    source_text: str,
+    title: str,
+    source: str,
+    azure_translator_key: str | None = None,
+    azure_translator_region: str | None = None,
+    volcengine_access_key_id: str | None = None,
+    volcengine_secret_access_key: str | None = None,
+    volcengine_region: str = "cn-north-1",
+) -> str:
+    clean_source = clean_summary_material(source_text)
+    if not clean_source:
+        return ""
+    chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", clean_source))
+    latin_letters = len(re.findall(r"[A-Za-z]", clean_source))
+    if chinese_chars >= 30 and chinese_chars >= latin_letters / 2:
+        material = clean_source[:900]
+    elif not (
+        (volcengine_access_key_id and volcengine_secret_access_key)
+        or (azure_translator_key and azure_translator_region)
+    ):
+        title_summary = review_chinese_translation(title, source_text).rstrip("。；;,.，")
+        if len(title_summary) >= 18:
+            return (
+                f"{title_summary}。由于当前未配置火山引擎或 Azure 翻译密钥，英文正文暂不做长段机器翻译，"
+                "请优先点击原文查看完整细节；配置翻译密钥后会自动生成更完整的中文概述。"
+            )
+        return ""
+    else:
+        material_source = clean_source[:600]
+        translated = translate_to_zh_stable(material_source, azure_key=azure_translator_key, azure_region=azure_translator_region, volcengine_access_key_id=volcengine_access_key_id, volcengine_secret_access_key=volcengine_secret_access_key, volcengine_region=volcengine_region)
+        material = translated if translated and translated != material_source else material_source
+    material = apply_term_glossary(material)
+    material = review_chinese_translation(material, source_text)
+    material = clean_summary_material(material)
+    summary = compact_editorial_summary(material)
+    if summary and not has_noise_markers(summary):
+        return summary
+    title_summary = review_chinese_translation(title, source_text).rstrip("。；;,.，")
+    if len(title_summary) >= 18:
+        return f"{title_summary}。"
+    return ""
+
+
 def polish_summary(
     summary: str,
     source_text: str,
@@ -258,25 +384,28 @@ def polish_summary(
     force_fallback: bool = False,
     azure_translator_key: str | None = None,
     azure_translator_region: str | None = None,
+    volcengine_access_key_id: str | None = None,
+    volcengine_secret_access_key: str | None = None,
+    volcengine_region: str = "cn-north-1",
 ) -> str:
     clean_summary = " ".join((summary or "").split())
     if force_fallback or looks_mostly_english(clean_summary) or looks_mojibake(clean_summary):
-        clean_summary = chinese_fallback_summary(
+        clean_summary = build_local_summary(
             source_text,
             title,
             source,
             azure_translator_key=azure_translator_key,
             azure_translator_region=azure_translator_region,
+            volcengine_access_key_id=volcengine_access_key_id,
+            volcengine_secret_access_key=volcengine_secret_access_key,
+            volcengine_region=volcengine_region,
         )
     clean_summary = clean_summary_material(clean_summary)
     clean_summary = review_chinese_translation(clean_summary, source_text)
-    if len(clean_summary) < 180:
-        clean_summary = (
-            f"{clean_summary} "
-            "这条新闻的重点不只在单个事件本身，也在于它反映出 AI 技术、资本投入、产品落地或监管环境正在继续变化。"
-            "后续可以关注相关公司是否公布更多细节，以及这一变化会怎样影响行业竞争和实际应用。"
-        ).strip()
-    return clean_summary[:330].rstrip("，。；;,. ") + "。"
+    compact = compact_editorial_summary(clean_summary)
+    if compact and not has_noise_markers(compact):
+        return compact
+    return clean_summary[:190].rstrip("，。；;,. ") + "。"
 
 
 def build_summary_source(item, metadata: ArticleMetadata | None) -> str:
@@ -289,11 +418,28 @@ def build_summary_source(item, metadata: ArticleMetadata | None) -> str:
     clean_parts: list[str] = []
     for part in parts:
         text = " ".join((part or "").split())
+        text = clean_summary_material(text)
         if text and text not in clean_parts:
             clean_parts.append(text)
     if not clean_parts:
         clean_parts.append((metadata.title if metadata and metadata.title else item.title).strip())
     return "\n".join(clean_parts)[:2200]
+
+
+def has_article_signal(item, metadata: ArticleMetadata | None, summary_source: str) -> bool:
+    if is_low_quality_source(item.source):
+        return False
+    if has_noise_markers(summary_source):
+        return False
+    clean_source = clean_summary_material(summary_source)
+    chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", clean_source))
+    latin_words = len(re.findall(r"\b[A-Za-z][A-Za-z-]{2,}\b", clean_source))
+    if chinese_chars + latin_words * 4 < 80:
+        return False
+    metadata_text_len = len("".join(((metadata.text if metadata else "") or "").split()))
+    description_len = len("".join(((metadata.description if metadata else "") or "").split()))
+    item_summary_len = len("".join((item.summary or item.raw_summary or "").split()))
+    return max(metadata_text_len, description_len, item_summary_len) >= 60
 
 
 def enrich_item(
@@ -304,13 +450,18 @@ def enrich_item(
     metadata: ArticleMetadata | None = None,
     azure_translator_key: str | None = None,
     azure_translator_region: str | None = None,
+    volcengine_access_key_id: str | None = None,
+    volcengine_secret_access_key: str | None = None,
+    volcengine_region: str = "cn-north-1",
+    openai_summary_enabled: bool = False,
 ) -> dict[str, str]:
     original_title = (metadata.title if metadata and metadata.title else item.raw_title or item.title).strip()
     title_cn = original_title
     summary_source = build_summary_source(item, metadata)
-    summary_cn = summary_source or item.summary
+    if not has_article_signal(item, metadata, summary_source):
+        return {}
     if item.language.lower().startswith("en"):
-        title_cn = translate_to_zh_stable(original_title, azure_translator_key, azure_translator_region)
+        title_cn = translate_to_zh_stable(original_title, azure_key=azure_translator_key, azure_region=azure_translator_region, volcengine_access_key_id=volcengine_access_key_id, volcengine_secret_access_key=volcengine_secret_access_key, volcengine_region=volcengine_region)
         title_translated = title_cn != original_title and not looks_mostly_english(title_cn)
         try:
             if not title_translated:
@@ -324,25 +475,36 @@ def enrich_item(
         except Exception as exc:
             logger.warning("Title translation failed for %s: %s", item.url, exc)
         if not title_translated:
-            title_cn = chinese_fallback_title(original_title, azure_translator_key, azure_translator_region)
+            title_cn = chinese_fallback_title(
+                original_title,
+                azure_translator_key,
+                azure_translator_region,
+                volcengine_access_key_id=volcengine_access_key_id,
+                volcengine_secret_access_key=volcengine_secret_access_key,
+                volcengine_region=volcengine_region,
+            )
         title_cn = review_chinese_translation(strip_chinese_source_suffix(title_cn), original_title)
-    try:
-        summary_cn = summarize_to_zh(
-            title_cn,
-            summary_source or summary_cn or item.summary,
-            openai_api_key,
-            base_url=openai_base_url,
-            model=openai_model,
-        )
-    except Exception as exc:
-        logger.warning("Summary generation failed for %s: %s", item.url, exc)
-        summary_cn = chinese_fallback_summary(
-            summary_source,
-            title_cn or original_title,
-            item.source,
-            azure_translator_key=azure_translator_key,
-            azure_translator_region=azure_translator_region,
-        )
+    summary_cn = build_local_summary(
+        summary_source,
+        title_cn or original_title,
+        item.source,
+        azure_translator_key=azure_translator_key,
+        azure_translator_region=azure_translator_region,
+        volcengine_access_key_id=volcengine_access_key_id,
+        volcengine_secret_access_key=volcengine_secret_access_key,
+        volcengine_region=volcengine_region,
+    )
+    if openai_api_key and openai_summary_enabled:
+        try:
+            summary_cn = summarize_to_zh(
+                title_cn,
+                summary_source or summary_cn or item.summary,
+                openai_api_key,
+                base_url=openai_base_url,
+                model=openai_model,
+            )
+        except Exception as exc:
+            logger.warning("Summary generation failed for %s: %s", item.url, exc)
     summary_cn = polish_summary(
         summary_cn,
         source_text=summary_source,
@@ -351,9 +513,12 @@ def enrich_item(
         force_fallback=item.language.lower().startswith("en") and looks_mostly_english(summary_cn),
         azure_translator_key=azure_translator_key,
         azure_translator_region=azure_translator_region,
+        volcengine_access_key_id=volcengine_access_key_id,
+        volcengine_secret_access_key=volcengine_secret_access_key,
+        volcengine_region=volcengine_region,
     )
     if item.language.lower().startswith("en") and looks_mostly_english(summary_cn):
-        translated_source = translate_to_zh_stable(summary_source, azure_translator_key, azure_translator_region)
+        translated_source = translate_to_zh_stable(summary_source, azure_key=azure_translator_key, azure_region=azure_translator_region, volcengine_access_key_id=volcengine_access_key_id, volcengine_secret_access_key=volcengine_secret_access_key, volcengine_region=volcengine_region)
         summary_cn = polish_summary(
             chinese_fallback_summary(
                 translated_source,
@@ -361,6 +526,9 @@ def enrich_item(
                 item.source,
                 azure_translator_key=azure_translator_key,
                 azure_translator_region=azure_translator_region,
+                volcengine_access_key_id=volcengine_access_key_id,
+                volcengine_secret_access_key=volcengine_secret_access_key,
+                volcengine_region=volcengine_region,
             ),
             source_text=translated_source,
             title=title_cn or original_title,
@@ -368,8 +536,13 @@ def enrich_item(
             force_fallback=False,
             azure_translator_key=azure_translator_key,
             azure_translator_region=azure_translator_region,
+            volcengine_access_key_id=volcengine_access_key_id,
+            volcengine_secret_access_key=volcengine_secret_access_key,
+            volcengine_region=volcengine_region,
         )
 
+    if not summary_cn:
+        return {}
     return {
         "title": title_cn or item.title,
         "original_title": original_title,
@@ -423,11 +596,32 @@ def attach_single_article_metadata(item, timeout_seconds: int, retries: int, use
     return metadata_by_url.get(item.url, ArticleMetadata())
 
 
+def resolve_item_url_without_scrape(item, timeout_seconds: int, retries: int, user_agent: str) -> ArticleMetadata:
+    if is_google_news_url(item.url):
+        resolved_url = resolve_google_news_url(
+            item.url,
+            timeout_seconds=timeout_seconds,
+            retries=retries,
+            user_agent=user_agent,
+        )
+        if resolved_url != item.url:
+            item.url = resolved_url
+    if item.image_url and is_google_news_placeholder_image(item.image_url):
+        item.image_url = ""
+    return ArticleMetadata()
+
+
 def is_overseas_item(item) -> bool:
     return item.language.lower().startswith("en")
 
 
-def select_balanced_items(items, max_items: int) -> list:
+def select_balanced_items(
+    items,
+    max_items: int,
+    overseas_min_items: int = OVERSEAS_MIN_ITEMS,
+    domestic_min_items: int = DOMESTIC_MIN_ITEMS,
+    max_overseas_items: int | None = None,
+) -> list:
     overseas_items = [item for item in items if is_overseas_item(item)]
     domestic_items = [item for item in items if not is_overseas_item(item)]
     selected: list = []
@@ -438,17 +632,29 @@ def select_balanced_items(items, max_items: int) -> list:
         for candidate in candidates:
             if len(selected) >= max_items or added >= limit:
                 break
+            if (
+                max_overseas_items is not None
+                and is_overseas_item(candidate)
+                and sum(is_overseas_item(item) for item in selected) >= max_overseas_items
+            ):
+                continue
             if candidate.url in seen_urls:
                 continue
             selected.append(candidate)
             seen_urls.add(candidate.url)
             added += 1
 
-    add_from(overseas_items, min(OVERSEAS_MIN_ITEMS, max_items))
-    add_from(domestic_items, min(DOMESTIC_MIN_ITEMS, max_items - len(selected)))
+    add_from(overseas_items, min(overseas_min_items, max_items))
+    add_from(domestic_items, min(domestic_min_items, max_items - len(selected)))
     for candidate in items:
         if len(selected) >= max_items:
             break
+        if (
+            max_overseas_items is not None
+            and is_overseas_item(candidate)
+            and sum(is_overseas_item(item) for item in selected) >= max_overseas_items
+        ):
+            continue
         if candidate.url in seen_urls:
             continue
         selected.append(candidate)
@@ -564,9 +770,19 @@ def main() -> int:
     ranked_items = dedupe_by_title_similarity(dated_items, threshold=0.85)
     raw_unsent_items = filter_unsent(app.db_path, ranked_items)
     quality_raw_items = [item for item in raw_unsent_items if is_raw_item_quality_ok(item)]
+    has_volcengine_translator = bool(app.volcengine_access_key_id and app.volcengine_secret_access_key)
+    has_azure_translator = bool(app.azure_translator_key and app.azure_translator_region)
+    has_stable_translator = has_volcengine_translator or has_azure_translator
+    candidate_multiplier = QUALITY_CANDIDATE_MULTIPLIER if has_stable_translator else 3
+    overseas_min_items = OVERSEAS_MIN_ITEMS if has_stable_translator else 2
+    domestic_min_items = DOMESTIC_MIN_ITEMS if has_stable_translator else 8
+    max_overseas_items = None if has_stable_translator else 3
     candidate_items = select_balanced_items(
         quality_raw_items,
-        app.max_news_items * QUALITY_CANDIDATE_MULTIPLIER,
+        app.max_news_items * candidate_multiplier,
+        overseas_min_items=overseas_min_items,
+        domestic_min_items=domestic_min_items,
+        max_overseas_items=max_overseas_items,
     )
     logger.info("Fetched %d items from %d sources", len(fetch_result.items), len(sources))
     logger.info("After date filter (%s): %d items", target_date, len(dated_items))
@@ -575,6 +791,10 @@ def main() -> int:
     logger.info("After raw quality filter: %d items", len(quality_raw_items))
     logger.info("Selected candidates: %d items", len(candidate_items))
     logger.info("Max news items: %d", app.max_news_items)
+    logger.info(
+        "Translation mode: %s",
+        "volcengine" if has_volcengine_translator else "azure" if has_azure_translator else "limited-no-translator",
+    )
     if fetch_result.failed_sources:
         logger.warning("Failed sources: %s", ", ".join(fetch_result.failed_sources))
     else:
@@ -585,12 +805,23 @@ def main() -> int:
     enriched = []
     unsent_items = []
     for item in candidate_items:
-        metadata = attach_single_article_metadata(
-            item,
-            timeout_seconds=min(app.fetch_timeout_seconds, 10),
-            retries=1,
-            user_agent=app.user_agent,
-        )
+        if has_stable_translator:
+            metadata = attach_single_article_metadata(
+                item,
+                timeout_seconds=min(app.fetch_timeout_seconds, 5),
+                retries=1,
+                user_agent=app.user_agent,
+            )
+        else:
+            metadata = resolve_item_url_without_scrape(
+                item,
+                timeout_seconds=2,
+                retries=1,
+                user_agent=app.user_agent,
+            )
+        if is_google_news_url(item.url):
+            logger.info("Skipped unresolved Google News item: %s", item.url)
+            continue
         enriched_item = enrich_item(
             item,
             app.openai_api_key,
@@ -599,11 +830,16 @@ def main() -> int:
             metadata=metadata,
             azure_translator_key=app.azure_translator_key,
             azure_translator_region=app.azure_translator_region,
+            volcengine_access_key_id=app.volcengine_access_key_id,
+            volcengine_secret_access_key=app.volcengine_secret_access_key,
+            volcengine_region=app.volcengine_region,
+            openai_summary_enabled=app.openai_summary_enabled,
         )
         if not is_content_quality_ok(
             enriched_item.get("title", ""),
             enriched_item.get("summary", ""),
             enriched_item.get("original_title", ""),
+            min_summary_chars=80 if has_stable_translator else 60,
         ):
             logger.info("Skipped low-quality item after translation review: %s", item.url)
             continue

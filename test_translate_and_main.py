@@ -3,8 +3,10 @@ from __future__ import annotations
 from fetch_news import ArticleMetadata
 from fetch_news import NewsItem
 from main import (
+    compact_editorial_summary,
     enrich_item,
     is_content_quality_ok,
+    is_raw_item_quality_ok,
     looks_mojibake,
     review_chinese_translation,
     select_balanced_items,
@@ -15,8 +17,10 @@ from translate import translate_to_zh_stable
 def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
     calls = {"stable_translate": [], "openai_translate": [], "summarize": []}
 
-    def fake_stable_translate(text, azure_key=None, azure_region=None):
-        calls["stable_translate"].append((text, azure_key, azure_region))
+    def fake_stable_translate(text, azure_key=None, azure_region=None, **kwargs):
+        calls["stable_translate"].append((text, azure_key, azure_region, kwargs))
+        if "reasoning, coding and planning" in text:
+            return "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。后续重点看它在真实业务中的稳定性和落地效果。"
         return "OpenAI 发布新的 AI 模型"
 
     def fake_openai_translate(text, api_key, base_url, model="gpt-4.1-mini"):
@@ -25,7 +29,7 @@ def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
 
     def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini"):
         calls["summarize"].append((title, description, api_key, model))
-        return "中文摘要：这是一条新闻"
+        return "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。后续重点看它在真实业务中的稳定性和落地效果。"
 
     monkeypatch.setattr("main.translate_to_zh_stable", fake_stable_translate)
     monkeypatch.setattr("main.translate_to_zh_with_base_url", fake_openai_translate)
@@ -40,9 +44,15 @@ def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
         image_url="",
         published_at="2026-06-02T08:00:00+08:00",
         published_date="2026-06-02",
-        summary="The new model improves reasoning.",
+        summary=(
+            "The new model improves reasoning, coding and planning for developers. "
+            "OpenAI says the release is aimed at production use cases and enterprise teams."
+        ),
         raw_title="OpenAI launches a new model",
-        raw_summary="The new model improves reasoning.",
+        raw_summary=(
+            "The new model improves reasoning, coding and planning for developers. "
+            "OpenAI says the release is aimed at production use cases and enterprise teams."
+        ),
     )
 
     enriched = enrich_item(
@@ -58,12 +68,21 @@ def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
     assert enriched["url"] == item.url
     assert enriched["source"] == item.source
     assert enriched["published_at"] == item.published_at
-    assert enriched["summary"].startswith("中文摘要：这是一条新闻")
-    assert len(enriched["summary"]) >= 80
+    assert enriched["summary"].startswith("OpenAI 发布的新模型提升了推理")
+    assert len(enriched["summary"]) <= 190
     assert enriched["original_title"] == item.raw_title
-    assert calls["stable_translate"][0] == ("OpenAI launches a new model", "azure-key", "eastasia")
+    assert calls["stable_translate"][0] == (
+        "OpenAI launches a new model",
+        "azure-key",
+        "eastasia",
+        {
+            "volcengine_access_key_id": None,
+            "volcengine_secret_access_key": None,
+            "volcengine_region": "cn-north-1",
+        },
+    )
     assert calls["openai_translate"] == []
-    assert len(calls["summarize"]) == 1
+    assert calls["summarize"] == []
 
 
 def test_english_news_falls_back_when_openai_fails(monkeypatch):
@@ -75,15 +94,14 @@ def test_english_news_falls_back_when_openai_fails(monkeypatch):
 
     monkeypatch.setattr("main.translate_to_zh_with_base_url", failing_translate)
     monkeypatch.setattr("main.summarize_to_zh", failing_summarize)
-    monkeypatch.setattr(
-        "main.translate_to_zh_stable",
-        lambda text, azure_key=None, azure_region=None: {
-            "OpenAI launches a new model": "OpenAI 发布新模型",
-            "The new model improves reasoning. The launch gives developers stronger coding, analysis and planning capabilities.": (
-                "新模型提升了推理能力。此次发布为开发者带来更强的编码、分析和规划能力。"
-            ),
-        }.get(text, text),
-    )
+    def fake_stable_translate(text, azure_key=None, azure_region=None, **kwargs):
+        if text == "OpenAI launches a new model":
+            return "OpenAI 发布新模型"
+        if "The new model improves reasoning" in text:
+            return "新模型提升了推理能力。此次发布为开发者带来更强的编码、分析和规划能力。"
+        return text
+
+    monkeypatch.setattr("main.translate_to_zh_stable", fake_stable_translate)
 
     item = NewsItem(
         title="OpenAI launches a new model",
@@ -94,9 +112,9 @@ def test_english_news_falls_back_when_openai_fails(monkeypatch):
         image_url="",
         published_at="2026-06-02T08:00:00+08:00",
         published_date="2026-06-02",
-        summary="The new model improves reasoning.",
+        summary="The new model improves reasoning. The launch gives developers stronger coding, analysis and planning capabilities.",
         raw_title="OpenAI launches a new model",
-        raw_summary="The new model improves reasoning.",
+        raw_summary="The new model improves reasoning. The launch gives developers stronger coding, analysis and planning capabilities.",
     )
     metadata = ArticleMetadata(
         title="OpenAI launches a new model",
@@ -116,15 +134,50 @@ def test_english_news_falls_back_when_openai_fails(monkeypatch):
 
     assert enriched["title"] == "OpenAI 发布新模型"
     assert enriched["original_title"] == item.raw_title
-    assert enriched["summary"].startswith("据 Google News AI 报道，")
     assert "新模型提升了推理能力" in enriched["summary"]
     assert enriched["url"] == item.url
     assert enriched["source"] == item.source
     assert enriched["published_at"] == item.published_at
 
 
-def test_translate_to_zh_stable_uses_azure_first(monkeypatch):
+def test_noise_source_and_summary_are_rejected():
+    noisy = NewsItem(
+        title="Oracle faces questions around pace of AI data center buildout",
+        url="https://www.moomoo.com/hans/news/post/example",
+        source="Moomoo",
+        language="zh",
+        source_priority=1,
+        image_url="",
+        published_at="2026-06-02T08:00:00+08:00",
+        published_date="2026-06-02",
+        summary="甲骨文数据中心建设受到关注。はじめての方へ 口座開設の流れ 入金 出金 米国株現物取引",
+        raw_title="Oracle faces questions around pace of AI data center buildout",
+        raw_summary="甲骨文数据中心建设受到关注。はじめての方へ 口座開設の流れ 入金 出金 米国株現物取引",
+    )
+
+    assert not is_raw_item_quality_ok(noisy)
+    assert not is_content_quality_ok("甲骨文数据中心建设受到关注", noisy.summary, noisy.raw_title)
+
+
+def test_compact_editorial_summary_removes_noise_and_keeps_key_points():
+    summary = compact_editorial_summary(
+        "谷歌回顾 5 月份推出的人工智能产品，涵盖 Gemini、Android、量子计算和健康领域。"
+        "《每日报》将最新技术更新直接发送到您的收件箱。"
+        "这些更新显示，Google 正把 AI 能力继续嵌入云、移动端和科研产品。"
+        "后续值得关注这些功能能否进入企业客户和消费端应用。"
+    )
+
+    assert "每日报" not in summary
+    assert "Gemini" in summary
+    assert len(summary) <= 190
+
+
+def test_translate_to_zh_stable_uses_volcengine_first(monkeypatch):
     calls = []
+
+    def fake_volcengine(text, access_key_id, secret_access_key, region):
+        calls.append(("volcengine", text, access_key_id, secret_access_key, region))
+        return "火山中文标题"
 
     def fake_azure(text, key, region):
         calls.append(("azure", text, key, region))
@@ -134,13 +187,56 @@ def test_translate_to_zh_stable_uses_azure_first(monkeypatch):
         calls.append(("google", text))
         return "Google 中文标题"
 
+    monkeypatch.setattr("translate.translate_to_zh_volcengine", fake_volcengine)
     monkeypatch.setattr("translate.translate_to_zh_azure", fake_azure)
     monkeypatch.setattr("translate.translate_to_zh_fallback", fake_google)
 
-    translated = translate_to_zh_stable("OpenAI launches a new model", "key", "eastasia")
+    translated = translate_to_zh_stable(
+        "OpenAI launches a new model",
+        azure_key="azure-key",
+        azure_region="eastasia",
+        volcengine_access_key_id="ak",
+        volcengine_secret_access_key="sk",
+        volcengine_region="cn-north-1",
+    )
+
+    assert translated == "火山中文标题"
+    assert calls == [("volcengine", "OpenAI launches a new model", "ak", "sk", "cn-north-1")]
+
+
+def test_translate_to_zh_stable_falls_back_to_azure_when_volcengine_returns_source(monkeypatch):
+    calls = []
+
+    def fake_volcengine(text, access_key_id, secret_access_key, region):
+        calls.append(("volcengine", text, access_key_id, secret_access_key, region))
+        return text
+
+    def fake_azure(text, key, region):
+        calls.append(("azure", text, key, region))
+        return "Azure 中文标题"
+
+    def fake_google(text):
+        calls.append(("google", text))
+        return "Google 中文标题"
+
+    monkeypatch.setattr("translate.translate_to_zh_volcengine", fake_volcengine)
+    monkeypatch.setattr("translate.translate_to_zh_azure", fake_azure)
+    monkeypatch.setattr("translate.translate_to_zh_fallback", fake_google)
+
+    translated = translate_to_zh_stable(
+        "OpenAI launches a new model",
+        azure_key="azure-key",
+        azure_region="eastasia",
+        volcengine_access_key_id="ak",
+        volcengine_secret_access_key="sk",
+        volcengine_region="cn-north-1",
+    )
 
     assert translated == "Azure 中文标题"
-    assert calls == [("azure", "OpenAI launches a new model", "key", "eastasia")]
+    assert calls == [
+        ("volcengine", "OpenAI launches a new model", "ak", "sk", "cn-north-1"),
+        ("azure", "OpenAI launches a new model", "azure-key", "eastasia"),
+    ]
 
 
 def test_review_chinese_translation_fixes_son_context():
