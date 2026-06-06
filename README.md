@@ -100,7 +100,7 @@ python main.py --test-feishu --send
 - `FEISHU_KEYWORD`：如果飞书机器人开启了关键词校验，可以设置关键词
 - `AZURE_TRANSLATOR_KEY`：Azure AI Translator 的 Key，作为火山引擎不可用时的备用
 - `AZURE_TRANSLATOR_REGION`：Azure AI Translator 资源所在区域，例如 `eastasia`、`southeastasia`
-- `OPENAI_SUMMARY_ENABLED`：是否启用 OpenAI 兼容接口润色摘要，默认 `false`
+- `OPENAI_SUMMARY_ENABLED`：是否启用 OpenAI 兼容接口做理解式摘要。GitHub Actions 默认设为 `true`
 
 不要把任何 key 写入代码或提交到公开仓库。
 
@@ -121,8 +121,10 @@ python main.py --test-feishu --send
 
 1. 有火山引擎 Secrets 时，优先使用火山引擎机器翻译。
 2. 火山引擎未配置或请求失败时，如果配置了 Azure，则使用 Azure Translator。
-3. 两者都未配置时，进入轻量模式：优先中文新闻，少量保留海外新闻，避免英文长文被免费接口乱翻译。
-4. 如果标题或摘要翻译后仍明显是英文、乱码、菜单广告或内容过短，会跳过该条新闻。
+3. 有 `OPENAI_API_KEY` 时，使用 OpenAI 兼容模型做理解式中文摘要，重点讲清楚“发生了什么、为什么重要、后续看什么”。
+4. 模型摘要不合格时，会自动回退到本地摘要；两者都不合格则跳过该条新闻。
+5. 两者都未配置时，进入轻量模式：优先中文新闻，少量保留海外新闻，避免英文长文被免费接口乱翻译。
+6. 如果标题或摘要翻译后仍明显是英文、乱码、菜单广告或内容过短，会跳过该条新闻。
 
 ## Azure Translator 备用
 

@@ -149,6 +149,112 @@ def test_english_news_falls_back_when_openai_fails(monkeypatch):
     assert enriched["published_at"] == item.published_at
 
 
+def test_model_summary_is_used_when_quality_gate_passes(monkeypatch):
+    def fake_stable_translate(text, azure_key=None, azure_region=None, **kwargs):
+        if text == "OpenAI launches a new model":
+            return "OpenAI 发布新模型"
+        return (
+            "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。"
+            "这意味着团队可以把模型用于代码生成、数据分析和复杂任务拆解。"
+        )
+
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini"):
+        return (
+            "OpenAI 发布新的推理模型，重点提升代码、数学和规划任务的稳定性，并通过 API 面向开发者和企业客户开放。"
+            "这会影响团队构建客服自动化、数据分析和内部知识库等 AI 应用的方式，也会加快同类模型在性能、价格和安全策略上的竞争。"
+            "后续需要观察实际延迟、成本和企业落地效果。"
+        )
+
+    monkeypatch.setattr("main.translate_to_zh_stable", fake_stable_translate)
+    monkeypatch.setattr("main.summarize_to_zh", fake_summarize)
+
+    item = NewsItem(
+        title="OpenAI launches a new model",
+        url="https://example.com/article",
+        source="Google News AI",
+        language="en",
+        source_priority=1,
+        image_url="",
+        published_at="2026-06-02T08:00:00+08:00",
+        published_date="2026-06-02",
+        summary="The new model improves reasoning, coding and planning for developers and enterprise teams.",
+        raw_title="OpenAI launches a new model",
+        raw_summary="The new model improves reasoning, coding and planning for developers and enterprise teams.",
+    )
+
+    enriched = enrich_item(
+        item,
+        openai_api_key="test-key",
+        openai_base_url="https://api.example.com/v1",
+        openai_model="gpt5.4-mini",
+        metadata=ArticleMetadata(
+            title="OpenAI launches a new model",
+            description="The new model improves reasoning, coding and planning for developers and enterprise teams.",
+            text=(
+                "OpenAI says the release is designed for production use cases, including code generation, "
+                "data analysis, customer support automation and internal knowledge base tools."
+            ),
+        ),
+        volcengine_access_key_id="ak",
+        volcengine_secret_access_key="sk",
+        openai_summary_enabled=True,
+    )
+
+    assert "通过 API 面向开发者和企业客户开放" in enriched["summary"]
+    assert "后续需要观察实际延迟、成本和企业落地效果" in enriched["summary"]
+
+
+def test_model_summary_falls_back_when_too_vague(monkeypatch):
+    def fake_stable_translate(text, azure_key=None, azure_region=None, **kwargs):
+        if text == "OpenAI launches a new model":
+            return "OpenAI 发布新模型"
+        return (
+            "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。"
+            "这意味着团队可以把模型用于代码生成、数据分析和复杂任务拆解。"
+        )
+
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini"):
+        return "这条新闻意义重大，值得持续关注，后续可能带来深远影响。"
+
+    monkeypatch.setattr("main.translate_to_zh_stable", fake_stable_translate)
+    monkeypatch.setattr("main.summarize_to_zh", fake_summarize)
+
+    item = NewsItem(
+        title="OpenAI launches a new model",
+        url="https://example.com/article",
+        source="Google News AI",
+        language="en",
+        source_priority=1,
+        image_url="",
+        published_at="2026-06-02T08:00:00+08:00",
+        published_date="2026-06-02",
+        summary="The new model improves reasoning, coding and planning for developers and enterprise teams.",
+        raw_title="OpenAI launches a new model",
+        raw_summary="The new model improves reasoning, coding and planning for developers and enterprise teams.",
+    )
+
+    enriched = enrich_item(
+        item,
+        openai_api_key="test-key",
+        openai_base_url="https://api.example.com/v1",
+        openai_model="gpt5.4-mini",
+        metadata=ArticleMetadata(
+            title="OpenAI launches a new model",
+            description="The new model improves reasoning, coding and planning for developers and enterprise teams.",
+            text=(
+                "OpenAI says the release is designed for production use cases, including code generation, "
+                "data analysis, customer support automation and internal knowledge base tools."
+            ),
+        ),
+        volcengine_access_key_id="ak",
+        volcengine_secret_access_key="sk",
+        openai_summary_enabled=True,
+    )
+
+    assert "意义重大，值得持续关注" not in enriched["summary"]
+    assert "代码生成、数据分析和复杂任务拆解" in enriched["summary"]
+
+
 def test_noise_source_and_summary_are_rejected():
     noisy = NewsItem(
         title="Oracle faces questions around pace of AI data center buildout",

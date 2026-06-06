@@ -97,6 +97,51 @@ SUMMARY_SIGNAL_TERMS = {
     "字节",
     "华为",
 }
+SUMMARY_ACTION_TERMS = {
+    "宣布",
+    "发布",
+    "推出",
+    "提升",
+    "支持",
+    "用于",
+    "上线",
+    "开放",
+    "升级",
+    "开源",
+    "融资",
+    "投资",
+    "收购",
+    "合作",
+    "调查",
+    "监管",
+    "起诉",
+    "禁止",
+    "计划",
+    "测试",
+    "部署",
+    "应用",
+    "裁员",
+    "招聘",
+    "涨价",
+    "降价",
+}
+SUMMARY_IMPACT_TERMS = {
+    "影响",
+    "意味着",
+    "企业",
+    "开发者",
+    "用户",
+    "监管",
+    "安全",
+    "成本",
+    "价格",
+    "竞争",
+    "生态",
+    "落地",
+    "商业化",
+    "风险",
+    "后续",
+}
 
 
 def looks_mostly_english(text: str) -> bool:
@@ -134,7 +179,29 @@ def is_content_quality_ok(title: str, summary: str, original_title: str = "", mi
         return False
     if original_title and title.strip() == original_title.strip() and looks_mostly_english(original_title):
         return False
+    if not is_summary_explanatory(f"{title}。{summary}", min_chars=min_summary_chars):
+        return False
     return True
+
+
+def is_summary_explanatory(summary: str, min_chars: int = 80) -> bool:
+    clean_summary = " ".join((summary or "").split())
+    if len(clean_summary) < min_chars:
+        return False
+    if looks_mostly_english(clean_summary) or looks_mojibake(clean_summary) or has_noise_markers(clean_summary):
+        return False
+    has_subject = any(term.lower() in clean_summary.lower() for term in SUMMARY_SIGNAL_TERMS)
+    has_action = any(term in clean_summary for term in SUMMARY_ACTION_TERMS)
+    has_impact = any(term in clean_summary for term in SUMMARY_IMPACT_TERMS)
+    empty_phrases = (
+        "值得关注相关公司是否披露更多",
+        "反映出 AI 技术正在",
+        "这条新闻的重点不只在单个事件本身",
+        "建议结合原文进一步查看",
+    )
+    if any(phrase in clean_summary for phrase in empty_phrases):
+        return False
+    return has_subject and has_action and has_impact
 
 
 def is_raw_item_quality_ok(item) -> bool:
@@ -513,6 +580,8 @@ def polish_summary(
     compact = compact_editorial_summary(clean_summary)
     if compact and not has_noise_markers(compact):
         return compact
+    if not clean_summary:
+        return ""
     return clean_summary[:500].rstrip("，。；;,. ") + "。"
 
 
@@ -603,14 +672,21 @@ def enrich_item(
         volcengine_region=volcengine_region,
     )
     if openai_api_key and openai_summary_enabled:
+        local_summary = summary_cn
         try:
-            summary_cn = summarize_to_zh(
+            model_summary = summarize_to_zh(
                 title_cn,
                 summary_source or summary_cn or item.summary,
                 openai_api_key,
                 base_url=openai_base_url,
                 model=openai_model,
             )
+            model_summary = postprocess_chinese_text(model_summary, summary_source)
+            if is_summary_explanatory(model_summary, min_chars=100):
+                summary_cn = model_summary
+            else:
+                logger.info("Model summary failed quality gate for %s; using local summary", item.url)
+                summary_cn = local_summary
         except Exception as exc:
             logger.warning("Summary generation failed for %s: %s", item.url, exc)
     summary_cn = polish_summary(
