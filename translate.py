@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 from datetime import datetime, timezone
+from json import JSONDecodeError
 from urllib import request, error
 from urllib.parse import quote
 from uuid import uuid4
@@ -38,8 +39,29 @@ def _call_openai_chat(
     return _post_openai_chat(api_key=api_key, base_url=base_url, payload=payload)
 
 
+def _openai_chat_url_candidates(base_url: str) -> list[str]:
+    clean_base_url = base_url.rstrip("/")
+    candidates = [clean_base_url + "/chat/completions"]
+    if not clean_base_url.endswith("/v1"):
+        candidates.append(clean_base_url + "/v1/chat/completions")
+    return candidates
+
+
 def _post_openai_chat(api_key: str, base_url: str, payload: dict) -> str:
-    chat_url = base_url.rstrip("/") + "/chat/completions"
+    last_error: Exception | None = None
+    for chat_url in _openai_chat_url_candidates(base_url):
+        try:
+            return _post_openai_chat_once(api_key=api_key, chat_url=chat_url, payload=payload)
+        except RuntimeError as exc:
+            last_error = exc
+            if "non-JSON response" not in str(exc) and "HTTP 404" not in str(exc):
+                break
+    if last_error:
+        raise last_error
+    raise RuntimeError("OpenAI request failed before sending")
+
+
+def _post_openai_chat_once(api_key: str, chat_url: str, payload: dict) -> str:
     req = request.Request(
         chat_url,
         data=json.dumps(payload).encode("utf-8"),
@@ -51,14 +73,19 @@ def _post_openai_chat(api_key: str, base_url: str, payload: dict) -> str:
     )
     try:
         with request.urlopen(req, timeout=60) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+            response_text = resp.read().decode("utf-8", errors="ignore")
+            try:
+                body = json.loads(response_text)
+            except JSONDecodeError as exc:
+                preview = response_text[:120].replace("\n", " ")
+                raise RuntimeError(f"OpenAI request returned non-JSON response: {preview}") from exc
     except error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", errors="ignore")
         if "temperature" in error_body and "temperature" in payload:
             fallback_payload = dict(payload)
             fallback_payload.pop("temperature", None)
-            return _post_openai_chat(api_key=api_key, base_url=base_url, payload=fallback_payload)
-        raise RuntimeError(f"OpenAI request failed: {error_body}") from exc
+            return _post_openai_chat_once(api_key=api_key, chat_url=chat_url, payload=fallback_payload)
+        raise RuntimeError(f"OpenAI request failed with HTTP {exc.code}: {error_body}") from exc
 
     try:
         return body["choices"][0]["message"]["content"].strip()

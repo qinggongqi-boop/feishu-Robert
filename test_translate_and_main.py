@@ -13,6 +13,7 @@ from main import (
     select_balanced_items,
 )
 from translate import translate_to_zh_stable
+from translate import _openai_chat_url_candidates
 
 
 def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
@@ -344,6 +345,16 @@ def test_translate_to_zh_stable_uses_volcengine_first(monkeypatch):
 
     assert translated == "火山中文标题"
     assert calls == [("volcengine", "OpenAI launches a new model", "ak", "sk", "cn-north-1")]
+
+
+def test_openai_base_url_candidates_support_plain_and_v1_base_urls():
+    assert _openai_chat_url_candidates("https://codexx.dns.army") == [
+        "https://codexx.dns.army/chat/completions",
+        "https://codexx.dns.army/v1/chat/completions",
+    ]
+    assert _openai_chat_url_candidates("https://codexx.dns.army/v1") == [
+        "https://codexx.dns.army/v1/chat/completions",
+    ]
 
 
 def test_translate_to_zh_stable_falls_back_to_azure_when_volcengine_returns_source(monkeypatch):
