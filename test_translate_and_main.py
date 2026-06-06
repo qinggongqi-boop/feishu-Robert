@@ -500,6 +500,16 @@ def test_review_chinese_translation_fixes_son_context():
     assert "儿子" not in reviewed
 
 
+def test_review_chinese_translation_fixes_meta_hack_context():
+    reviewed = review_chinese_translation(
+        "Meta hack表明AI安全不仅仅是Mythos",
+        "The Meta hack shows there’s more to AI security than Mythos",
+    )
+
+    assert "Meta 遭黑客攻击" in reviewed
+    assert "hack" not in reviewed.lower()
+
+
 def test_quality_gate_rejects_mojibake_english_and_short_summary():
     assert looks_mojibake("Ã¥ÂÂ«Ã¦ÂœÂ‰Ã¤Â¹Â±Ã§Â ÂÃ§ÂšÂ„Ã¦Â–Â‡Ã¦ÂœÂ¬")
     assert not is_content_quality_ok(

@@ -63,13 +63,13 @@ def _article_html(item: dict[str, str], index: int) -> str:
     summary = escape(_truncate_summary(item.get("summary", "")))
     original_title_html = f'<p class="original-title">{original_title}</p>' if original_title and original_title != title else ""
     link_html = (
-        f'<a class="source-link" href="{url}" target="_blank" rel="noopener noreferrer">阅读原文</a>'
+        f'<a class="source-link" href="{url}" target="_blank" rel="noopener noreferrer" data-scroll-link="true">阅读原文</a>'
         if url
         else '<span class="source-link disabled">暂无原文链接</span>'
     )
 
     return f"""
-    <article class="news-card">
+    <article class="news-card" id="news-{index:02d}" data-news-index="{index:02d}">
       <div class="rank">{index:02d}</div>
       {_image_html(item)}
       <div class="content">
@@ -387,6 +387,52 @@ def build_report_html(
       生成时间：{escape(generated_at)}。内容由公开 RSS / Google News RSS 聚合生成，摘要仅供快速阅读，事实以原文为准。
     </footer>
   </main>
+  <script>
+    (function () {{
+      var key = "ai-news-scroll:" + location.pathname;
+      if ("scrollRestoration" in history) {{
+        history.scrollRestoration = "manual";
+      }}
+
+      function currentScrollY() {{
+        return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      }}
+
+      function saveScroll(event) {{
+        try {{
+          var link = event && event.target && event.target.closest ? event.target.closest("[data-scroll-link]") : null;
+          var card = link && link.closest ? link.closest("[data-news-index]") : null;
+          sessionStorage.setItem(key, JSON.stringify({{
+            y: currentScrollY(),
+            cardId: card ? card.id : "",
+            savedAt: Date.now()
+          }}));
+        }} catch (error) {{}}
+      }}
+
+      function restoreScroll() {{
+        try {{
+          var raw = sessionStorage.getItem(key);
+          if (!raw) return;
+          var data = JSON.parse(raw);
+          if (!data || Date.now() - data.savedAt > 24 * 60 * 60 * 1000) return;
+          requestAnimationFrame(function () {{
+            if (data.cardId && document.getElementById(data.cardId)) {{
+              document.getElementById(data.cardId).scrollIntoView({{ block: "start", behavior: "auto" }});
+              window.scrollBy(0, -12);
+              return;
+            }}
+            window.scrollTo({{ top: data.y || 0, behavior: "auto" }});
+          }});
+        }} catch (error) {{}}
+      }}
+
+      document.addEventListener("click", saveScroll);
+      window.addEventListener("pagehide", saveScroll);
+      window.addEventListener("pageshow", restoreScroll);
+      document.addEventListener("DOMContentLoaded", restoreScroll);
+    }})();
+  </script>
 </body>
 </html>
 """

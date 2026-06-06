@@ -310,6 +310,11 @@ def review_chinese_translation(text: str, original_text: str = "") -> str:
     }
     for bad, good in replacements.items():
         reviewed = reviewed.replace(bad, good)
+    if re.search(r"(?<![A-Za-z])hack(?![A-Za-z])", original, flags=re.IGNORECASE) or re.search(
+        r"(?<![A-Za-z])hack(?![A-Za-z])", reviewed, flags=re.IGNORECASE
+    ):
+        reviewed = re.sub(r"(?<![A-Za-z])Meta\s+hack(?![A-Za-z])", "Meta 遭黑客攻击", reviewed, flags=re.IGNORECASE)
+        reviewed = re.sub(r"(?<![A-Za-z])hack(?![A-Za-z])", "黑客攻击", reviewed, flags=re.IGNORECASE)
     reviewed = re.sub(r"\s+", " ", reviewed).strip()
     return reviewed
 

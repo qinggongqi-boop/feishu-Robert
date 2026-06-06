@@ -67,6 +67,35 @@ def test_report_html_has_mobile_overflow_guards_and_keeps_long_summary():
     assert "本地回退" in html
 
 
+def test_report_html_restores_scroll_position_after_opening_source_link():
+    html = build_report_html(
+        items=[
+            {
+                "title": "中文主标题",
+                "original_title": "Original English Title",
+                "summary": "这是一段中文概述，介绍新闻的关键事实、背景和影响，方便读者快速理解这条科技新闻为什么值得关注。",
+                "source": "404 Media",
+                "url": "https://example.com/article",
+                "tag": "海外",
+                "summary_source": "模型摘要",
+                "image_urls": [],
+            }
+        ],
+        target_date="2026-06-05",
+        total_count=30,
+        selected_count=1,
+        generated_at="2026-06-06 09:13 CST",
+    )
+
+    assert 'id="news-01"' in html
+    assert 'data-news-index="01"' in html
+    assert 'data-scroll-link="true"' in html
+    assert "sessionStorage" in html
+    assert "ai-news-scroll" in html
+    assert "pageshow" in html
+    assert "scrollIntoView" in html
+
+
 def test_write_report_generates_latest_index_redirect(tmp_path):
     report_path = write_report(
         items=[],
