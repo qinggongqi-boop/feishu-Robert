@@ -24,6 +24,7 @@ def summarize_to_zh(
     base_url: str = "https://api.openai.com/v1",
     model: str = "gpt-4.1-mini",
     retries: int = 1,
+    timeout_seconds: int = 20,
 ) -> str:
     source_text = "\n".join(part for part in [title.strip(), description.strip()] if part)
     if not source_text:
@@ -58,6 +59,7 @@ def summarize_to_zh(
                     "Do not invent facts."
                 ),
                 user_prompt=prompt,
+                timeout_seconds=timeout_seconds,
             ))
         except RuntimeError as exc:
             last_error = exc

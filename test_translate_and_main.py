@@ -34,7 +34,7 @@ def test_english_news_translates_and_keeps_fields_complete(monkeypatch):
         calls["openai_translate"].append((text, api_key, model))
         return f"OpenAI 中文：{text}"
 
-    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1, **kwargs):
         calls["summarize"].append((title, description, api_key, model))
         return (
             "OpenAI 发布的新模型提升了推理、编码和规划能力，面向开发者和企业生产场景。"
@@ -160,7 +160,7 @@ def test_model_summary_is_used_when_quality_gate_passes(monkeypatch):
             "这意味着团队可以把模型用于代码生成、数据分析和复杂任务拆解。"
         )
 
-    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1, **kwargs):
         return (
             "OpenAI 发布新的推理模型，重点提升代码、数学和规划任务的稳定性，并通过 API 面向开发者和企业客户开放。"
             "这会影响团队构建客服自动化、数据分析和内部知识库等 AI 应用的方式，也会加快同类模型在性能、价格和安全策略上的竞争。"
@@ -215,7 +215,7 @@ def test_model_summary_falls_back_when_too_vague(monkeypatch):
             "这意味着团队可以把模型用于代码生成、数据分析和复杂任务拆解。"
         )
 
-    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini"):
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", **kwargs):
         return "这条新闻意义重大，值得持续关注，后续可能带来深远影响。"
 
     monkeypatch.setattr("main.translate_to_zh_stable", fake_stable_translate)
@@ -260,8 +260,16 @@ def test_model_summary_falls_back_when_too_vague(monkeypatch):
 def test_final_summary_enhancement_uses_model_for_selected_items_only(monkeypatch):
     calls = []
 
-    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
-        calls.append((title, api_key, base_url, model, retries))
+    def fake_summarize(
+        title,
+        description,
+        api_key,
+        base_url="https://api.openai.com/v1",
+        model="gpt-4.1-mini",
+        retries=1,
+        timeout_seconds=20,
+    ):
+        calls.append((title, api_key, base_url, model, retries, timeout_seconds))
         return (
             "OpenAI 发布新的推理模型，重点提升代码、数学和规划任务的稳定性，并通过 API 面向开发者和企业客户开放。"
             "这会影响团队构建客服自动化、数据分析和内部知识库等 AI 应用的方式，也会加快同类模型在性能、价格和安全策略上的竞争。"
@@ -284,16 +292,17 @@ def test_final_summary_enhancement_uses_model_for_selected_items_only(monkeypatc
         openai_api_key="test-key",
         openai_base_url="https://api.example.com/v1",
         openai_summary_model="gpt-4.1-mini",
+        openai_summary_timeout_seconds=12,
     )
 
     assert len(calls) == 1
-    assert calls[0] == ("OpenAI 发布新模型", "test-key", "https://api.example.com/v1", "gpt-4.1-mini", 1)
+    assert calls[0] == ("OpenAI 发布新模型", "test-key", "https://api.example.com/v1", "gpt-4.1-mini", 1, 12)
     assert items[0]["summary_source"] == "模型摘要"
     assert "通过 API 面向开发者和企业客户开放" in items[0]["summary"]
 
 
 def test_final_summary_enhancement_marks_local_fallback_when_model_fails(monkeypatch):
-    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1, **kwargs):
         raise RuntimeError("OpenAI request failed with HTTP 503")
 
     monkeypatch.setattr("main.summarize_to_zh", fake_summarize)
@@ -321,7 +330,7 @@ def test_final_summary_enhancement_marks_local_fallback_when_model_fails(monkeyp
 def test_final_summary_enhancement_stops_when_model_is_unsupported(monkeypatch):
     calls = []
 
-    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1):
+    def fake_summarize(title, description, api_key, base_url="https://api.openai.com/v1", model="gpt-4.1-mini", retries=1, **kwargs):
         calls.append(title)
         raise RuntimeError("OpenAI request failed with HTTP 400: model is not supported")
 

@@ -39,6 +39,7 @@ class AppConfig:
     openai_summary_api_key: str | None
     openai_summary_base_url: str
     openai_summary_model: str
+    openai_summary_timeout_seconds: int
     openai_summary_enabled: bool
     volcengine_access_key_id: str | None
     volcengine_secret_access_key: str | None
@@ -113,6 +114,7 @@ def load_app_config(
             or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         ),
         openai_summary_model=os.getenv("OPENAI_SUMMARY_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+        openai_summary_timeout_seconds=int(os.getenv("OPENAI_SUMMARY_TIMEOUT_SECONDS", "20")),
         openai_summary_enabled=os.getenv("OPENAI_SUMMARY_ENABLED", "false").lower() == "true",
         volcengine_access_key_id=os.getenv("VOLCENGINE_ACCESS_KEY_ID") or os.getenv("VOLC_ACCESS_KEY_ID"),
         volcengine_secret_access_key=os.getenv("VOLCENGINE_SECRET_ACCESS_KEY") or os.getenv("VOLC_SECRET_ACCESS_KEY"),

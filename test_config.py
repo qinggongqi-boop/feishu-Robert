@@ -23,6 +23,7 @@ def test_app_config_defaults_to_post_and_15_items(monkeypatch):
     assert app.openai_summary_model == "gpt-4.1-mini"
     assert app.openai_summary_api_key == app.openai_api_key
     assert app.openai_summary_base_url == app.openai_base_url
+    assert app.openai_summary_timeout_seconds == 20
     assert app.report_base_url == "https://qinggongqi-boop.github.io/feishu-Robert"
     assert app.report_output_dir.name == "docs"
     assert app.report_keep_days == 7
@@ -62,6 +63,7 @@ def test_app_config_reads_dedicated_summary_endpoint(monkeypatch):
     monkeypatch.setenv("OPENAI_SUMMARY_API_KEY", "summary-key")
     monkeypatch.setenv("OPENAI_SUMMARY_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     monkeypatch.setenv("OPENAI_SUMMARY_MODEL", "qwen-turbo")
+    monkeypatch.setenv("OPENAI_SUMMARY_TIMEOUT_SECONDS", "12")
 
     app = load_app_config()
 
@@ -70,6 +72,7 @@ def test_app_config_reads_dedicated_summary_endpoint(monkeypatch):
     assert app.openai_summary_api_key == "summary-key"
     assert app.openai_summary_base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
     assert app.openai_summary_model == "qwen-turbo"
+    assert app.openai_summary_timeout_seconds == 12
 
 
 def test_app_config_reads_volcengine_translator_env(monkeypatch):

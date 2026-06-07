@@ -26,6 +26,7 @@ def _call_openai_chat(
     system_prompt: str,
     user_prompt: str,
     temperature: float = 0.2,
+    timeout_seconds: int = 60,
 ) -> str:
     payload = {
         "model": model,
@@ -36,7 +37,7 @@ def _call_openai_chat(
     }
     if temperature is not None:
         payload["temperature"] = temperature
-    return _post_openai_chat(api_key=api_key, base_url=base_url, payload=payload)
+    return _post_openai_chat(api_key=api_key, base_url=base_url, payload=payload, timeout_seconds=timeout_seconds)
 
 
 def _openai_chat_url_candidates(base_url: str) -> list[str]:
@@ -47,11 +48,16 @@ def _openai_chat_url_candidates(base_url: str) -> list[str]:
     return candidates
 
 
-def _post_openai_chat(api_key: str, base_url: str, payload: dict) -> str:
+def _post_openai_chat(api_key: str, base_url: str, payload: dict, timeout_seconds: int = 60) -> str:
     last_error: Exception | None = None
     for chat_url in _openai_chat_url_candidates(base_url):
         try:
-            return _post_openai_chat_once(api_key=api_key, chat_url=chat_url, payload=payload)
+            return _post_openai_chat_once(
+                api_key=api_key,
+                chat_url=chat_url,
+                payload=payload,
+                timeout_seconds=timeout_seconds,
+            )
         except RuntimeError as exc:
             last_error = exc
             if "non-JSON response" not in str(exc) and "HTTP 404" not in str(exc):
@@ -61,7 +67,7 @@ def _post_openai_chat(api_key: str, base_url: str, payload: dict) -> str:
     raise RuntimeError("OpenAI request failed before sending")
 
 
-def _post_openai_chat_once(api_key: str, chat_url: str, payload: dict) -> str:
+def _post_openai_chat_once(api_key: str, chat_url: str, payload: dict, timeout_seconds: int = 60) -> str:
     req = request.Request(
         chat_url,
         data=json.dumps(payload).encode("utf-8"),
@@ -72,7 +78,7 @@ def _post_openai_chat_once(api_key: str, chat_url: str, payload: dict) -> str:
         method="POST",
     )
     try:
-        with request.urlopen(req, timeout=60) as resp:
+        with request.urlopen(req, timeout=timeout_seconds) as resp:
             response_text = resp.read().decode("utf-8", errors="ignore")
             try:
                 body = json.loads(response_text)
@@ -84,7 +90,12 @@ def _post_openai_chat_once(api_key: str, chat_url: str, payload: dict) -> str:
         if "temperature" in error_body and "temperature" in payload:
             fallback_payload = dict(payload)
             fallback_payload.pop("temperature", None)
-            return _post_openai_chat_once(api_key=api_key, chat_url=chat_url, payload=fallback_payload)
+            return _post_openai_chat_once(
+                api_key=api_key,
+                chat_url=chat_url,
+                payload=fallback_payload,
+                timeout_seconds=timeout_seconds,
+            )
         raise RuntimeError(f"OpenAI request failed with HTTP {exc.code}: {error_body}") from exc
 
     try:

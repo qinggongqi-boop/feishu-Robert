@@ -855,6 +855,7 @@ def enhance_final_summaries_with_model(
     openai_api_key: str | None,
     openai_base_url: str,
     openai_summary_model: str,
+    openai_summary_timeout_seconds: int = 20,
 ) -> None:
     if not openai_api_key:
         logger.info("Model summary enhancement skipped: OPENAI_API_KEY is not set")
@@ -874,6 +875,7 @@ def enhance_final_summaries_with_model(
                 base_url=openai_base_url,
                 model=openai_summary_model,
                 retries=1,
+                timeout_seconds=openai_summary_timeout_seconds,
             )
             model_summary = postprocess_chinese_text(model_summary, material)
             if is_summary_explanatory(f"{title}。{model_summary}", min_chars=100):
@@ -1200,6 +1202,7 @@ def main() -> int:
             openai_api_key=app.openai_summary_api_key,
             openai_base_url=app.openai_summary_base_url,
             openai_summary_model=app.openai_summary_model,
+            openai_summary_timeout_seconds=app.openai_summary_timeout_seconds,
         )
     else:
         logger.info("Model summary enhancement skipped: OPENAI_SUMMARY_ENABLED is false")
