@@ -10,6 +10,8 @@ def test_app_config_defaults_to_post_and_15_items(monkeypatch):
     monkeypatch.delenv("FEISHU_APP_SECRET", raising=False)
     monkeypatch.delenv("MAX_IMAGE_UPLOADS", raising=False)
     monkeypatch.delenv("OPENAI_SUMMARY_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_SUMMARY_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_SUMMARY_BASE_URL", raising=False)
 
     app = load_app_config()
 
@@ -19,6 +21,8 @@ def test_app_config_defaults_to_post_and_15_items(monkeypatch):
     assert app.feishu_app_secret is None
     assert app.max_image_uploads == 5
     assert app.openai_summary_model == "gpt-4.1-mini"
+    assert app.openai_summary_api_key == app.openai_api_key
+    assert app.openai_summary_base_url == app.openai_base_url
     assert app.report_base_url == "https://qinggongqi-boop.github.io/feishu-Robert"
     assert app.report_output_dir.name == "docs"
     assert app.report_keep_days == 7
@@ -50,6 +54,22 @@ def test_app_config_reads_dedicated_summary_model(monkeypatch):
 
     assert app.openai_model == "gpt5.4-mini"
     assert app.openai_summary_model == "gpt-4.1-mini"
+
+
+def test_app_config_reads_dedicated_summary_endpoint(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "main-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://main.example.com/v1")
+    monkeypatch.setenv("OPENAI_SUMMARY_API_KEY", "summary-key")
+    monkeypatch.setenv("OPENAI_SUMMARY_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("OPENAI_SUMMARY_MODEL", "qwen-turbo")
+
+    app = load_app_config()
+
+    assert app.openai_api_key == "main-key"
+    assert app.openai_base_url == "https://main.example.com/v1"
+    assert app.openai_summary_api_key == "summary-key"
+    assert app.openai_summary_base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    assert app.openai_summary_model == "qwen-turbo"
 
 
 def test_app_config_reads_volcengine_translator_env(monkeypatch):

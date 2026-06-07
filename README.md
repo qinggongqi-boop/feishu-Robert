@@ -94,6 +94,8 @@ python main.py --test-feishu --send
 - `OPENAI_API_KEY`：OpenAI 或兼容服务 API Key
 - `OPENAI_BASE_URL`：OpenAI 兼容接口地址，例如 `https://codexx.dns.army/v1`
 - `OPENAI_MODEL`：模型名，例如 `gpt5.4-mini`
+- `OPENAI_SUMMARY_API_KEY`：摘要专用 API Key。可选；不填时沿用 `OPENAI_API_KEY`
+- `OPENAI_SUMMARY_BASE_URL`：摘要专用兼容接口地址。可选；阿里云百炼中国大陆可填 `https://dashscope.aliyuncs.com/compatible-mode/v1`
 - `OPENAI_SUMMARY_MODEL`：摘要专用模型。可选；不填时默认跟随 `OPENAI_MODEL`。如果当前模型不稳定，可以单独填写服务商支持的更稳定模型
 - `VOLCENGINE_ACCESS_KEY_ID`：火山引擎 Access Key ID
 - `VOLCENGINE_SECRET_ACCESS_KEY`：火山引擎 Secret Access Key
@@ -105,6 +107,8 @@ python main.py --test-feishu --send
 - `AZURE_TRANSLATOR_KEY`：Azure AI Translator 的 Key，作为火山引擎不可用时的备用
 - `AZURE_TRANSLATOR_REGION`：Azure AI Translator 资源所在区域，例如 `eastasia`、`southeastasia`
 - `OPENAI_SUMMARY_ENABLED`：是否启用 OpenAI 兼容接口做理解式摘要。GitHub Actions 默认设为 `true`
+
+阿里云百炼的 `qwen-turbo` 不需要自行部署模型；创建 API Key 后，把 `OPENAI_SUMMARY_BASE_URL` 设为百炼兼容地址，并把 `OPENAI_SUMMARY_MODEL` 设为 `qwen-turbo` 即可调用。
 
 不要把任何 key 写入代码或提交到公开仓库。
 

@@ -1197,8 +1197,8 @@ def main() -> int:
     if app.openai_summary_enabled:
         enhance_final_summaries_with_model(
             enriched,
-            openai_api_key=app.openai_api_key,
-            openai_base_url=app.openai_base_url,
+            openai_api_key=app.openai_summary_api_key,
+            openai_base_url=app.openai_summary_base_url,
             openai_summary_model=app.openai_summary_model,
         )
     else:
