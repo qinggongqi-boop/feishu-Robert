@@ -886,12 +886,21 @@ def enhance_final_summaries_with_model(
             logger.info("Model summary failed quality gate for %s; using local summary", item.get("url", ""))
         except Exception as exc:
             logger.warning("Summary generation failed for %s: %s", item.get("url", ""), exc)
-            if "not supported" in str(exc) or "HTTP 400" in str(exc):
+            stop_markers = (
+                "not supported",
+                "model_not_found",
+                "HTTP 400",
+                "HTTP 404",
+                "HTTP 503",
+                "timed out",
+                "The read operation timed out",
+            )
+            if any(marker in str(exc) for marker in stop_markers):
                 for remaining_item in items[index:]:
                     remaining_item["summary_source"] = "本地回退"
                 fallback_count += len(items) - index
                 logger.warning(
-                    "Model summary enhancement stopped because model %s is unsupported",
+                    "Model summary enhancement stopped because model %s is unavailable or too slow",
                     openai_summary_model,
                 )
                 break
