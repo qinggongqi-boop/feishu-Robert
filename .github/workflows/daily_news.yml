@@ -16,6 +16,14 @@ on:
         options:
           - "false"
           - "true"
+      force_send:
+        description: "Bypass the Beijing delivery window for manual testing"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: read
@@ -63,11 +71,14 @@ jobs:
 
       - name: Check scheduled delivery window
         id: delivery-window
+        env:
+          FORCE_SEND: ${{ github.event.inputs.force_send || 'false' }}
+          TEST_FEISHU: ${{ github.event.inputs.test_feishu || 'false' }}
         run: |
           mkdir -p logs
-          if [ "${{ github.event_name }}" != "schedule" ]; then
+          if [ "$FORCE_SEND" = "true" ] || [ "$TEST_FEISHU" = "true" ]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "Manual run, delivery window check skipped." | tee logs/daily_news.log
+            echo "Manual force/test run, delivery window check skipped." | tee logs/daily_news.log
             exit 0
           fi
 

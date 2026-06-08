@@ -6,6 +6,7 @@
 
 - GitHub Actions 工作日北京时间 09:05 自动运行，周末北京时间 11:01 自动运行。
 - 如果 GitHub schedule 延迟到目标时间窗口之外，workflow 会跳过发送，避免晚上补发。
+- 推荐用外部定时器调用 `workflow_dispatch` 准点触发；外部触发默认仍会检查北京时间发送窗口。
 - 抓取 RSS / Google News RSS 新闻源。
 - 只筛选北京时间昨天发布的新闻。
 - AI 新闻优先，科技圈重大新闻作为补充。
@@ -112,6 +113,38 @@ python main.py --test-feishu --send
 阿里云百炼的 `qwen-turbo` 不需要自行部署模型；创建 API Key 后，把 `OPENAI_SUMMARY_BASE_URL` 设为百炼兼容地址，并把 `OPENAI_SUMMARY_MODEL` 设为 `qwen-turbo` 即可调用。
 
 不要把任何 key 写入代码或提交到公开仓库。
+
+## 外部定时器
+
+GitHub Actions 的 `schedule` 可能延迟。更准点的做法是在 cron-job.org、UptimeRobot 或 Cloudflare Workers Cron 中配置两个 HTTP POST：
+
+- 工作日北京时间 09:05
+- 周末北京时间 11:01
+
+请求地址：
+
+```text
+https://api.github.com/repos/qinggongqi-boop/feishu-Robert/actions/workflows/daily_news.yml/dispatches
+```
+
+请求方法：`POST`
+
+请求头：
+
+```text
+Accept: application/vnd.github+json
+Authorization: Bearer YOUR_GITHUB_TOKEN
+X-GitHub-Api-Version: 2022-11-28
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{"ref":"main"}
+```
+
+GitHub Token 建议使用 fine-grained token，只授予仓库 `qinggongqi-boop/feishu-Robert` 的 `Actions: Read and write` 权限。不要把 token 写进代码或公开页面。
 
 ## 火山引擎机器翻译
 
