@@ -9,7 +9,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from config import load_app_config, load_sources
-from dedupe import filter_unsent, mark_sent, mark_sent_url
+from dedupe import filter_unsent, has_sent, mark_sent, mark_sent_url
 from fetch_news import (
     ArticleMetadata,
     dedupe_by_title_similarity,
@@ -1022,6 +1022,10 @@ def build_report_notification_text(report_url: str, selected_count: int) -> str:
     return f"昨日 AI 科技新闻已更新，共 {selected_count} 条，请查阅：\n{report_url}"
 
 
+def report_marker_url(target_date: str) -> str:
+    return f"report:{target_date}"
+
+
 def write_report_meta(
     meta_path: str | Path,
     *,
@@ -1055,6 +1059,8 @@ def write_report_meta(
 
 def notify_from_meta(meta_path: str | Path, db_path: str | Path, webhook_url: str | None, send: bool) -> dict:
     data = json.loads(Path(meta_path).read_text(encoding="utf-8"))
+    target_date = str(data.get("target_date", ""))
+    marker_url = report_marker_url(target_date) if target_date else ""
     payload = build_feishu_text_payload(
         build_report_notification_text(
             report_url=data["report_url"],
@@ -1065,10 +1071,22 @@ def notify_from_meta(meta_path: str | Path, db_path: str | Path, webhook_url: st
     if not send:
         logger.info("Send status: skipped (dry run)")
         return payload
+    if marker_url and has_sent(db_path, marker_url):
+        logger.info("Report %s has already been sent; skipping duplicate notification", target_date)
+        logger.info("Send status: skipped (duplicate report)")
+        return payload
     if not webhook_url:
         raise RuntimeError("FEISHU_WEBHOOK_URL is not set")
     response_body = send_feishu_webhook(webhook_url, payload)
     logger.info("Feishu webhook response: %s", response_body or "<empty>")
+    if marker_url:
+        mark_sent_url(
+            db_path,
+            url=marker_url,
+            title=f"Daily AI News {target_date}",
+            source="report",
+            published_at=target_date,
+        )
     for item in data.get("items", []):
         mark_sent_url(
             db_path,
