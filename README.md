@@ -4,10 +4,10 @@
 
 ## 当前效果
 
-- GitHub Actions 工作日北京时间 09:05 自动运行，周末北京时间 11:01 自动运行，并在目标窗口内额外重试触发。
-- 如果 GitHub schedule 延迟到目标时间窗口之外，workflow 会跳过发送，避免晚上补发。
+- GitHub Actions 工作日北京时间 09:05 自动运行，周末北京时间 11:01 自动运行，并额外重试触发。
+- 发送窗口保护已关闭：无论 GitHub schedule 是否延迟，只要 workflow 被触发就会继续生成报告并发送飞书通知。
 - 同一日期报告只会发送一次，避免多次触发造成重复推送。
-- 推荐用外部定时器调用 `workflow_dispatch` 准点触发；外部触发默认仍会检查北京时间发送窗口。
+- 如果希望更准点，可以用外部定时器调用 `workflow_dispatch`；触发后不再检查北京时间发送窗口。
 - 抓取 RSS / Google News RSS 新闻源。
 - 只筛选北京时间昨天发布的新闻。
 - AI 新闻优先，科技圈重大新闻作为补充。
@@ -117,7 +117,7 @@ python main.py --test-feishu --send
 
 ## 外部定时器
 
-GitHub Actions 的 `schedule` 可能延迟。更准点的做法是在 cron-job.org、UptimeRobot 或 Cloudflare Workers Cron 中配置两个 HTTP POST：
+GitHub Actions 的 `schedule` 可能延迟。发送窗口保护已经关闭，所以延迟触发也会正常生成报告并发送飞书通知。如果你希望更准点，可以在 cron-job.org、UptimeRobot 或 Cloudflare Workers Cron 中配置两个 HTTP POST：
 
 - 工作日北京时间 09:05
 - 周末北京时间 11:01

@@ -17,7 +17,7 @@ on:
           - "false"
           - "true"
       force_send:
-        description: "Bypass the Beijing delivery window for manual testing"
+        description: "Deprecated: sending is no longer restricted by time window"
         required: false
         default: "false"
         type: choice
@@ -69,38 +69,7 @@ jobs:
           restore-keys: |
             report-pages-${{ runner.os }}-
 
-      - name: Check scheduled delivery window
-        id: delivery-window
-        env:
-          FORCE_SEND: ${{ github.event.inputs.force_send || 'false' }}
-          TEST_FEISHU: ${{ github.event.inputs.test_feishu || 'false' }}
-        run: |
-          mkdir -p logs
-          if [ "$FORCE_SEND" = "true" ] || [ "$TEST_FEISHU" = "true" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "Manual force/test run, delivery window check skipped." | tee logs/daily_news.log
-            exit 0
-          fi
-
-          weekday="$(TZ=Asia/Shanghai date +%u)"
-          hhmm="$(TZ=Asia/Shanghai date +%H%M)"
-          now="$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S %Z')"
-          should_run=false
-          if [ "$weekday" -ge 1 ] && [ "$weekday" -le 5 ] && [ "$hhmm" -ge 0855 ] && [ "$hhmm" -le 0930 ]; then
-            should_run=true
-          fi
-          if { [ "$weekday" -eq 6 ] || [ "$weekday" -eq 7 ]; } && [ "$hhmm" -ge 1050 ] && [ "$hhmm" -le 1130 ]; then
-            should_run=true
-          fi
-          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
-          if [ "$should_run" != "true" ]; then
-            echo "Skipped: scheduled workflow fired outside delivery window at $now." | tee logs/daily_news.log
-          else
-            echo "Scheduled workflow is inside delivery window at $now." | tee logs/daily_news.log
-          fi
-
       - name: Generate daily news report
-        if: ${{ steps.delivery-window.outputs.should_run == 'true' }}
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -132,22 +101,22 @@ jobs:
           fi
 
       - name: Configure GitHub Pages
-        if: ${{ steps.delivery-window.outputs.should_run == 'true' && github.event.inputs.test_feishu != 'true' }}
+        if: ${{ github.event.inputs.test_feishu != 'true' }}
         uses: actions/configure-pages@v5
 
       - name: Upload GitHub Pages artifact
-        if: ${{ steps.delivery-window.outputs.should_run == 'true' && github.event.inputs.test_feishu != 'true' }}
+        if: ${{ github.event.inputs.test_feishu != 'true' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
 
       - name: Deploy GitHub Pages
-        if: ${{ steps.delivery-window.outputs.should_run == 'true' && github.event.inputs.test_feishu != 'true' }}
+        if: ${{ github.event.inputs.test_feishu != 'true' }}
         id: deployment
         uses: actions/deploy-pages@v4
 
       - name: Send Feishu link notification
-        if: ${{ steps.delivery-window.outputs.should_run == 'true' && github.event.inputs.test_feishu != 'true' }}
+        if: ${{ github.event.inputs.test_feishu != 'true' }}
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           APP_TIMEZONE: Asia/Shanghai
@@ -159,7 +128,7 @@ jobs:
           python main.py --notify-meta logs/report_meta.json --send 2>&1 | tee -a logs/daily_news.log
 
       - name: Send Feishu webhook test
-        if: ${{ steps.delivery-window.outputs.should_run == 'true' && github.event.inputs.test_feishu == 'true' }}
+        if: ${{ github.event.inputs.test_feishu == 'true' }}
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_KEYWORD: ${{ secrets.FEISHU_KEYWORD }}
