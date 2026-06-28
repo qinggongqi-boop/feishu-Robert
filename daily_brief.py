@@ -574,8 +574,6 @@ def line_to_post_block(line: str) -> list[dict[str, object]]:
     text = line.rstrip()
     if not text:
         return [{"tag": "text", "text": ""}]
-    if re.match(r"^[一二三四五六七八九十]、", text) or text.startswith("每日增长情报简报"):
-        return [{"tag": "text", "text": text, "style": {"bold": True}}]
     return [{"tag": "text", "text": text}]
 
 
@@ -588,7 +586,7 @@ def build_brief_post_payload(
 ) -> dict:
     content: list[list[dict[str, object]]] = [line_to_post_block(line) for line in brief_text.splitlines()]
     content.append([{"tag": "text", "text": ""}])
-    content.append([{"tag": "text", "text": "参考来源", "style": {"bold": True}}])
+    content.append([{"tag": "text", "text": "参考来源"}])
     for article in articles[:max_references]:
         content.append(
             [

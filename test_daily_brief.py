@@ -158,6 +158,7 @@ def test_build_brief_post_payload_matches_feishu_post_structure():
     assert "参考来源" in json_text
     assert '"href": "https://example.com/1"' in json_text
     assert "[S1]" in json_text
+    assert '"style"' not in json_text
 
 
 def test_send_brief_falls_back_to_text_when_post_fails(monkeypatch):
