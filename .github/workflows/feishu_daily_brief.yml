@@ -47,9 +47,9 @@ jobs:
 
       - name: Run daily growth brief
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_SUMMARY_API_KEY }}
-          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL || secrets.OPENAI_SUMMARY_BASE_URL }}
-          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL || secrets.OPENAI_SUMMARY_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_SUMMARY_API_KEY || secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_SUMMARY_BASE_URL || secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_SUMMARY_MODEL || secrets.OPENAI_MODEL }}
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK || secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
           APP_TIMEZONE: Asia/Shanghai

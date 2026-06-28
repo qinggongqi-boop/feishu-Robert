@@ -242,9 +242,9 @@ GitHub Token 建议使用 fine-grained token，只授予仓库 `qinggongqi-boop/
 
 需要在仓库 `Settings -> Secrets and variables -> Actions` 中配置：
 
-- `OPENAI_API_KEY`，也兼容旧的 `OPENAI_SUMMARY_API_KEY`
-- `OPENAI_BASE_URL`，可选；不填时默认 `https://api.openai.com/v1`，也兼容旧的 `OPENAI_SUMMARY_BASE_URL`
-- `OPENAI_MODEL`，也兼容旧的 `OPENAI_SUMMARY_MODEL`
+- `OPENAI_API_KEY`，也兼容并优先使用旧的 `OPENAI_SUMMARY_API_KEY`
+- `OPENAI_BASE_URL`，可选；不填时默认 `https://api.openai.com/v1`，也兼容并优先使用旧的 `OPENAI_SUMMARY_BASE_URL`
+- `OPENAI_MODEL`，也兼容并优先使用旧的 `OPENAI_SUMMARY_MODEL`
 - `FEISHU_WEBHOOK`，也兼容旧的 `FEISHU_WEBHOOK_URL`
 - `FEISHU_SECRET`，可选；飞书机器人未开启签名时不填
 

@@ -174,17 +174,17 @@ def load_config(args: argparse.Namespace) -> BriefConfig:
     lookback_hours = int(args.lookback_hours if args.lookback_hours is not None else env_int("LOOKBACK_HOURS", 30))
     max_per_topic = int(args.max_per_topic if args.max_per_topic is not None else env_int("MAX_ARTICLES_PER_TOPIC", 10))
     openai_base_url = (
-        os.getenv("OPENAI_BASE_URL")
-        or os.getenv("OPENAI_SUMMARY_BASE_URL")
+        os.getenv("OPENAI_SUMMARY_BASE_URL")
+        or os.getenv("OPENAI_BASE_URL")
         or "https://api.openai.com/v1"
     )
-    openai_model = os.getenv("OPENAI_MODEL") or os.getenv("OPENAI_SUMMARY_MODEL") or "gpt-4.1-mini"
+    openai_model = os.getenv("OPENAI_SUMMARY_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4.1-mini"
     return BriefConfig(
         feeds_path=feeds_path,
         lookback_hours=lookback_hours,
         max_articles_per_topic=max_per_topic,
         timezone_name=os.getenv("APP_TIMEZONE", "Asia/Shanghai"),
-        openai_api_key=os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_SUMMARY_API_KEY"),
+        openai_api_key=os.getenv("OPENAI_SUMMARY_API_KEY") or os.getenv("OPENAI_API_KEY"),
         openai_base_url=openai_base_url,
         openai_model=openai_model,
         feishu_webhook=os.getenv("FEISHU_WEBHOOK") or os.getenv("FEISHU_WEBHOOK_URL"),
@@ -524,20 +524,33 @@ def generate_brief_text(articles: list[BriefArticle], config: BriefConfig, repor
     if not config.openai_api_key:
         raise BriefConfigError("Missing OPENAI_API_KEY. The formal daily brief needs an LLM call.")
     logger.info("Calling LLM model=%s base_url=%s", config.openai_model, config.openai_base_url)
-    brief = _call_openai_chat(
-        api_key=config.openai_api_key,
-        base_url=config.openai_base_url,
-        model=config.openai_model,
-        system_prompt=(
-            "你是一名中文增长情报编辑，擅长把科技、AI、广告、电商资讯整理成"
-            "对跨境电商增长负责人有用的机会判断和可执行建议。必须事实谨慎，不编造。"
-        ),
-        user_prompt=build_llm_prompt(articles, report_date),
-        temperature=0.2,
-        timeout_seconds=60,
+    system_prompt = (
+        "你是一名中文增长情报编辑，擅长把科技、AI、广告、电商资讯整理成"
+        "对跨境电商增长负责人有用的机会判断和可执行建议。必须事实谨慎，不编造。"
     )
-    logger.info("LLM call succeeded, brief_chars=%s", len(brief))
-    return brief.strip()
+    user_prompt = build_llm_prompt(articles, report_date)
+    last_error: Exception | None = None
+    for attempt in range(1, 3):
+        try:
+            brief = _call_openai_chat(
+                api_key=config.openai_api_key,
+                base_url=config.openai_base_url,
+                model=config.openai_model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.2,
+                timeout_seconds=90,
+            )
+            logger.info("LLM call succeeded, brief_chars=%s", len(brief))
+            return brief.strip()
+        except Exception as exc:
+            last_error = exc
+            if attempt >= 2:
+                break
+            logger.warning("LLM call failed on attempt %s, retrying once: %s", attempt, exc)
+            time.sleep(3)
+    assert last_error is not None
+    raise last_error
 
 
 def feishu_sign(secret: str, timestamp: int | None = None) -> tuple[str, str]:
