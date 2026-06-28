@@ -1,0 +1,77 @@
+[
+  {
+    "topic": "AI / 模型 / Codex / Agent",
+    "source": "OpenAI News",
+    "url": "https://openai.com/news/rss.xml"
+  },
+  {
+    "topic": "AI / 模型 / Codex / Agent",
+    "source": "Google AI Blog",
+    "url": "https://blog.google/technology/ai/rss/"
+  },
+  {
+    "topic": "AI / 模型 / Codex / Agent",
+    "source": "Google News Anthropic",
+    "url": "https://news.google.com/rss/search?q=Anthropic%20Claude%20AI%20when:2d&hl=en-US&gl=US&ceid=US:en"
+  },
+  {
+    "topic": "AI / 模型 / Codex / Agent",
+    "source": "Google News Microsoft AI",
+    "url": "https://news.google.com/rss/search?q=Microsoft%20AI%20Copilot%20agent%20when:2d&hl=en-US&gl=US&ceid=US:en"
+  },
+  {
+    "topic": "AI / 模型 / Codex / Agent",
+    "source": "TechCrunch AI",
+    "url": "https://techcrunch.com/category/artificial-intelligence/feed/"
+  },
+  {
+    "topic": "AI / 模型 / Codex / Agent",
+    "source": "Google News MIT AI",
+    "url": "https://news.google.com/rss/search?q=MIT%20artificial%20intelligence%20research%20when:2d&hl=en-US&gl=US&ceid=US:en"
+  },
+  {
+    "topic": "跨境电商 / Meta广告 / 爆款素材",
+    "source": "Google News Meta Ads",
+    "url": "https://news.google.com/rss/search?q=(Meta%20ads%20OR%20Facebook%20ads%20OR%20Instagram%20ads)%20(advertising%20OR%20creative%20OR%20ecommerce)%20when:2d&hl=en-US&gl=US&ceid=US:en"
+  },
+  {
+    "topic": "跨境电商 / Meta广告 / 爆款素材",
+    "source": "Social Media Today",
+    "url": "https://www.socialmediatoday.com/feeds/news/"
+  },
+  {
+    "topic": "跨境电商 / Meta广告 / 爆款素材",
+    "source": "Search Engine Journal",
+    "url": "https://www.searchenginejournal.com/feed/"
+  },
+  {
+    "topic": "跨境电商 / Meta广告 / 爆款素材",
+    "source": "Shopify Blog",
+    "url": "https://www.shopify.com/blog.atom"
+  },
+  {
+    "topic": "跨境电商 / Meta广告 / 爆款素材",
+    "source": "Google Ads Blog",
+    "url": "https://blog.google/products/ads-commerce/rss/"
+  },
+  {
+    "topic": "全球商业 / 科技公司动态",
+    "source": "TechCrunch",
+    "url": "https://techcrunch.com/feed/"
+  },
+  {
+    "topic": "全球商业 / 科技公司动态",
+    "source": "The Verge",
+    "url": "https://www.theverge.com/rss/index.xml"
+  },
+  {
+    "topic": "全球商业 / 科技公司动态",
+    "source": "Google News Tech Business",
+    "url": "https://news.google.com/rss/search?q=(technology%20business%20OR%20big%20tech)%20when:2d&hl=en-US&gl=US&ceid=US:en"
+  },
+  {
+    "topic": "全球商业 / 科技公司动态",
+    "source": "CNBC Technology",
+    "url": "https://www.cnbc.com/id/19854910/device/rss/rss.html"
+  }
+]

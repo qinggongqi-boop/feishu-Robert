@@ -2,6 +2,11 @@
 
 每天自动抓取前一天国内外 AI / 科技圈重要新闻，生成公开网页报告，并通过飞书机器人发送一个可点击链接。
 
+项目现在包含两条自动化链路：
+
+- `main.py`：原有 AI 科技新闻网页报告，生成 GitHub Pages 页面后给飞书发送链接。
+- `daily_brief.py`：每日增长情报简报，直接生成中文飞书富文本，面向美国服装独立站、Meta 广告、AI 视频、Agent 自动化和跨境电商增长机会。
+
 ## 当前效果
 
 - GitHub Actions 工作日北京时间 09:05 自动运行，周末北京时间 11:01 自动运行，并额外重试触发。
@@ -46,7 +51,12 @@ https://qinggongqi-boop.github.io/feishu-Robert/YYYY-MM-DD.html
 - `dedupe.py`：SQLite URL 去重
 - `config.py`：环境变量和配置加载
 - `sources.yaml`：新闻源配置
+- `daily_brief.py`：每日增长情报简报入口，直接推送飞书富文本或纯文本
+- `feeds.json`：增长情报简报资讯源配置
+- `.env.example`：增长情报简报本地环境变量示例
+- `launchd.com.user.feishu.dailybrief.plist.example`：Mac 本地定时任务模板
 - `.github/workflows/daily_news.yml`：每日自动运行和 Pages 部署
+- `.github/workflows/feishu_daily_brief.yml`：每日增长情报飞书简报 workflow
 
 ## 本地运行
 
@@ -89,6 +99,78 @@ python main.py --date 2026-06-05
 python main.py --test-feishu --send
 ```
 
+## 每日增长情报简报
+
+`daily_brief.py` 会抓取 `feeds.json` 中的 RSS 源，筛选最近 `LOOKBACK_HOURS` 小时内容，按 topic 限量后调用 OpenAI 兼容接口生成中文增长情报简报，并推送飞书自定义机器人。
+
+默认关注三个板块：
+
+- `AI / 模型 / Codex / Agent`
+- `跨境电商 / Meta广告 / 爆款素材`
+- `全球商业 / 科技公司动态`
+
+本地配置：
+
+```bash
+cp .env.example .env
+```
+
+然后在 `.env` 中填写：
+
+```env
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4.1-mini
+
+FEISHU_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+FEISHU_SECRET=
+
+LOOKBACK_HOURS=30
+MAX_ARTICLES_PER_TOPIC=10
+FEEDS_JSON=feeds.json
+```
+
+如果飞书机器人开启了签名校验，填写 `FEISHU_SECRET`；未开启可以留空。不要把 `.env` 提交到 GitHub。
+
+发送测试消息，不抓取 RSS，不调用 LLM：
+
+```bash
+python3 daily_brief.py --test
+```
+
+正式运行，默认发送飞书富文本 `post`：
+
+```bash
+python3 daily_brief.py
+```
+
+只发送纯文本消息：
+
+```bash
+python3 daily_brief.py --text-only
+```
+
+覆盖抓取窗口和每个板块保留数量：
+
+```bash
+python3 daily_brief.py --lookback-hours 48 --max-per-topic 15
+```
+
+使用自定义资讯源：
+
+```bash
+python3 daily_brief.py --feeds feeds.json
+```
+
+运行日志会写入：
+
+```text
+logs/dailybrief.out.log
+logs/dailybrief.err.log
+```
+
+如果单个 RSS 源失败，程序会记录 warning 并继续抓取其他源。如果 LLM 调用失败，程序会停止推送，避免把错误内容发到飞书。如果富文本发送失败，会自动尝试纯文本兜底。
+
 ## GitHub Secrets
 
 在仓库 `Settings -> Secrets and variables -> Actions` 中配置：
@@ -97,6 +179,8 @@ python main.py --test-feishu --send
 - `OPENAI_API_KEY`：OpenAI 或兼容服务 API Key
 - `OPENAI_BASE_URL`：OpenAI 兼容接口地址，例如 `https://codexx.dns.army/v1`
 - `OPENAI_MODEL`：模型名，例如 `gpt5.4-mini`
+- `FEISHU_WEBHOOK`：增长情报简报使用的飞书机器人 webhook。也可以继续使用旧变量 `FEISHU_WEBHOOK_URL`
+- `FEISHU_SECRET`：飞书机器人签名密钥。未开启签名校验时留空
 - `OPENAI_SUMMARY_API_KEY`：摘要专用 API Key。可选；不填时沿用 `OPENAI_API_KEY`
 - `OPENAI_SUMMARY_BASE_URL`：摘要专用兼容接口地址。可选；阿里云百炼中国大陆可填 `https://dashscope.aliyuncs.com/compatible-mode/v1`
 - `OPENAI_SUMMARY_MODEL`：摘要专用模型。可选；不填时默认跟随 `OPENAI_MODEL`。如果当前模型不稳定，可以单独填写服务商支持的更稳定模型
@@ -146,6 +230,58 @@ Content-Type: application/json
 ```
 
 GitHub Token 建议使用 fine-grained token，只授予仓库 `qinggongqi-boop/feishu-Robert` 的 `Actions: Read and write` 权限。不要把 token 写进代码或公开页面。
+
+## GitHub Actions 增长情报简报
+
+`.github/workflows/feishu_daily_brief.yml` 默认每天 `01:00 UTC` 自动运行，对应：
+
+- 北京时间：09:00
+- 日本时间：10:00
+
+也支持在 GitHub Actions 页面手动 `workflow_dispatch`。
+
+需要在仓库 `Settings -> Secrets and variables -> Actions` 中配置：
+
+- `OPENAI_API_KEY`，也兼容旧的 `OPENAI_SUMMARY_API_KEY`
+- `OPENAI_BASE_URL`，可选；不填时默认 `https://api.openai.com/v1`，也兼容旧的 `OPENAI_SUMMARY_BASE_URL`
+- `OPENAI_MODEL`，也兼容旧的 `OPENAI_SUMMARY_MODEL`
+- `FEISHU_WEBHOOK`，也兼容旧的 `FEISHU_WEBHOOK_URL`
+- `FEISHU_SECRET`，可选；飞书机器人未开启签名时不填
+
+手动测试时可以选择 `test=true`，workflow 会执行：
+
+```bash
+python daily_brief.py --test
+```
+
+正式运行时执行：
+
+```bash
+python daily_brief.py
+```
+
+## Mac launchd 定时
+
+本地 Mac 定时任务模板在：
+
+```text
+launchd.com.user.feishu.dailybrief.plist.example
+```
+
+使用步骤：
+
+1. 复制模板到 `~/Library/LaunchAgents/com.user.feishu.dailybrief.plist`
+2. 把模板里的 `/ABSOLUTE/PATH/TO/PROJECT` 替换为项目绝对路径
+3. 确认 `ProgramArguments` 使用的是项目虚拟环境里的 Python，例如 `.venv/bin/python`
+4. 加载任务：
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.user.feishu.dailybrief.plist 2>/dev/null
+launchctl load ~/Library/LaunchAgents/com.user.feishu.dailybrief.plist
+launchctl start com.user.feishu.dailybrief
+```
+
+默认每天上午 9:00 执行，日志写入 `logs/dailybrief.out.log` 和 `logs/dailybrief.err.log`。
 
 ## 火山引擎机器翻译
 
@@ -218,6 +354,12 @@ pytest -q
 - 昨天新闻日期判断
 - 英文新闻翻译字段完整性
 - URL 去重
+- 每日增长情报 feeds 读取
+- lookback 时间筛选
+- 每 topic 限量
+- 飞书签名
+- 飞书富文本结构
+- 富文本失败后的纯文本兜底
 - 飞书 webhook JSON
 - 报告页 HTML
 - 部署后通知元数据和已发送 URL 标记

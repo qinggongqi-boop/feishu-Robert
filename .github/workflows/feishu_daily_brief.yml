@@ -1,0 +1,79 @@
+name: Feishu Daily Growth Brief
+
+on:
+  schedule:
+    # 01:00 UTC = 09:00 Beijing time / 10:00 Japan time.
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Send a Feishu test message only"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      text_only:
+        description: "Send the formal brief as plain text"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+
+jobs:
+  daily-brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run daily growth brief
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_SUMMARY_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL || secrets.OPENAI_SUMMARY_BASE_URL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL || secrets.OPENAI_SUMMARY_MODEL }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK || secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
+          APP_TIMEZONE: Asia/Shanghai
+          LOOKBACK_HOURS: "30"
+          MAX_ARTICLES_PER_TOPIC: "10"
+          FEEDS_JSON: feeds.json
+        run: |
+          set -o pipefail
+          mkdir -p logs
+          ARGS=()
+          if [ "${{ github.event.inputs.test || 'false' }}" = "true" ]; then
+            ARGS+=("--test")
+          fi
+          if [ "${{ github.event.inputs.text_only || 'false' }}" = "true" ]; then
+            ARGS+=("--text-only")
+          fi
+          python daily_brief.py "${ARGS[@]}"
+
+      - name: Upload run logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feishu-daily-brief-logs
+          path: |
+            logs/dailybrief.out.log
+            logs/dailybrief.err.log
+          if-no-files-found: warn
